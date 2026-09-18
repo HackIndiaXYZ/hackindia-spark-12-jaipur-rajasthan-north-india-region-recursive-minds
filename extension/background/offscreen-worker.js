@@ -30,6 +30,16 @@ function loadImage(dataUrl) {
 }
 
 // ──────────────────────────────────────────────
+// Stub: ML Model Loading
+// Will be fully implemented by Privacy Engineer in Phase 3
+// ──────────────────────────────────────────────
+async function loadModels() {
+  console.log('[Offscreen] Loading ML models (stub)...');
+  // TODO: Phase 3 — Initialize ONNX Runtime, load BlazeFace and OCR
+  return true;
+}
+
+// ──────────────────────────────────────────────
 // Stub: PII Detection (Tier 2 & 3)
 // Will be implemented by Privacy Engineer in Phase 2-3
 // ──────────────────────────────────────────────
@@ -134,6 +144,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'offscreen') return false;
 
   switch (message.type) {
+    case 'LOAD_MODELS':
+      loadModels()
+        .then(() => sendResponse({ success: true }))
+        .catch((e) => sendResponse({ error: e.message }));
+      return true; // Async
+
     case 'RUN_DETECTION':
       runMLDetection(message.payload.screenshot, message.payload.domSnapshot)
         .then((result) => sendResponse(result))

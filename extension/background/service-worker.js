@@ -80,6 +80,9 @@ async function ensureOffscreenDocument() {
     });
     offscreenDocumentCreated = true;
     console.log('[Veilex] Offscreen document created.');
+
+    // Trigger model loading (async, non-blocking)
+    chrome.runtime.sendMessage({ type: 'LOAD_MODELS', target: 'offscreen' }).catch(() => {});
   } catch (e) {
     console.error('[Veilex] Failed to create offscreen document:', e);
     throw e;
