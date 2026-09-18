@@ -10,6 +10,8 @@
  * This is a Phase 1 scaffold — ML model loading and full redaction
  * will be implemented in Phases 2-3 by the Privacy and Redaction engineers.
  */
+import { initFaceDetector, detectFaces } from '../privacy/face-detector.js';
+import { initOCR, detectOCRText } from '../privacy/ocr-detector.js';
 
 // ──────────────────────────────────────────────
 // Canvas Setup
@@ -34,8 +36,12 @@ function loadImage(dataUrl) {
 // Will be fully implemented by Privacy Engineer in Phase 3
 // ──────────────────────────────────────────────
 async function loadModels() {
-  console.log('[Offscreen] Loading ML models (stub)...');
-  // TODO: Phase 3 — Initialize ONNX Runtime, load BlazeFace and OCR
+  console.log('[Offscreen] Loading ML models...');
+  await Promise.all([
+    initFaceDetector(),
+    initOCR()
+  ]);
+  console.log('[Offscreen] ML models loaded successfully.');
   return true;
 }
 
@@ -44,16 +50,13 @@ async function loadModels() {
 // Will be implemented by Privacy Engineer in Phase 2-3
 // ──────────────────────────────────────────────
 async function runMLDetection(screenshotDataUrl, domSnapshot) {
-  console.log('[Offscreen] Running ML detection (stub)...');
+  console.log('[Offscreen] Running ML detection...');
 
-  // TODO: Phase 2 — Load BlazeFace, run face detection
-  // TODO: Phase 2 — Run OCR on image regions
-  // TODO: Phase 3 — Run MobileNet document classification
+  const faceDetections = await detectFaces(screenshotDataUrl);
+  const ocrDetections = await detectOCRText(screenshotDataUrl);
 
-  // For now, return empty detections.
-  // Tier 1 (DOM + regex) detections are handled by the service worker / content script.
   return {
-    detections: [],
+    detections: [...faceDetections, ...ocrDetections],
   };
 }
 
