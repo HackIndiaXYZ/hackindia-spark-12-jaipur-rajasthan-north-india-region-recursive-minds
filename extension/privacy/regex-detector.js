@@ -45,9 +45,8 @@ const REGEX_SUITE = {
     confidence: 0.70 // Max recall
   },
   PASSWORD_CONTEXT: {
-    // Catches explicit declarations like "password is secret", "pwd: mypass", "passkey=1234"
-    // We capture the value after the contextual keyword.
-    pattern: /\b(?:password|passwd|pwd|secret|passkey)\s*(?:is|:|=>|=)\s*(\S+)\b/gi,
+    // Catches explicit declarations like "password is secret", "pwd: mypass", "passkey=1234", "login hellooicuchirag"
+    pattern: /\b(?:password|passwd|pwd|secret|passkey|login|credential)s?\s*(?:is\s+|:\s*|=>\s*|=\s*|for\s+|)\s*([A-Za-z0-9@$!%*?&_]+)\b/gi,
     confidence: 0.90, // High confidence since it's explicit
     // We only want to redact the secret part (Group 1), not the word "password is"
     captureGroup: 1
