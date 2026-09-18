@@ -44,12 +44,16 @@ export async function redactScreenshot(canvas, screenshotDataUrl, detections) {
       const { bbox, type, token } = detection;
       if (!bbox) continue;
 
+      // Handle both {w, h} (from DOM extractor) and {width, height} (from ML models)
+      const bboxWidth = bbox.width !== undefined ? bbox.width : bbox.w;
+      const bboxHeight = bbox.height !== undefined ? bbox.height : bbox.h;
+
       // 15% safety margin around the detected area to prevent edge leakage
       const padding = 0.15; 
-      let px = bbox.x - (bbox.width * padding / 2);
-      let py = bbox.y - (bbox.height * padding / 2);
-      let pw = bbox.width * (1 + padding);
-      let ph = bbox.height * (1 + padding);
+      let px = bbox.x - (bboxWidth * padding / 2);
+      let py = bbox.y - (bboxHeight * padding / 2);
+      let pw = bboxWidth * (1 + padding);
+      let ph = bboxHeight * (1 + padding);
 
       // Edge case: clamp bounds to canvas to avoid off-screen/scrolled artifacts
       px = Math.max(0, px);
