@@ -60,14 +60,46 @@ The extension requires the Veilex Python API backend to process prompts and gene
    ```bash
    pip install -r requirements.txt
    ```
-3. Set your Groq API key in the environment or a `.env` file (`GROQ_API_KEY=your_key`).
+3. Set your API keys in the environment or a `.env` file:
+   - `GROQ_API_KEY=your_key` (Primary)
+   - `OPENAI_API_KEY=your_key` (Fallback)
 4. Start the server:
    ```bash
    uvicorn server.main:app --host 0.0.0.0 --port 8000
    ```
 *(Note: Ensure the server URL in the extension popup settings matches `http://localhost:8000`)*
 
-### 3. Using Veilex
+### 3. API Documentation
+The Veilex server exposes two primary endpoints:
+
+- **`GET /api/health`**  
+  Returns the server status, version, and aggregated telemetry/analytics (total requests, VLM latencies, error breakdown).
+
+- **`POST /api/analyze`**  
+  **Request Body:**
+  ```json
+  {
+    "user_prompt": "Fill out the registration form",
+    "screenshot_b64": "...",
+    "dom_snapshot": { "interactiveElements": [...] },
+    "redaction_manifest": { "total_pii_found": 3, "summary": {...} },
+    "page_url": "https://example.com",
+    "page_title": "Registration",
+    "viewport": { "width": 1280, "height": 720 }
+  }
+  ```
+  **Response:**
+  ```json
+  {
+    "actions": [
+      { "type": "type", "selector": "#name", "value": "Jane" }
+    ],
+    "explanation": "Typing name into the field.",
+    "is_complete": false
+  }
+  ```
+
+### 4. Using Veilex
 1. Navigate to any web page (e.g., a registration form).
 2. Click the Veilex extension icon in the toolbar.
 3. Type your goal into the input box (e.g., "Fill out the registration form").

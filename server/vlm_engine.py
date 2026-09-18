@@ -102,15 +102,29 @@ async def analyze_context(
     # Build the user message with all available context
     user_text = _build_user_message(prompt, dom_snapshot, redaction_manifest, page_url, page_title)
 
-    # Try Groq first, fall back to Ollama
+    # Try Groq first
     if GROQ_API_KEY:
         try:
             return await _call_groq(user_text, screenshot_b64)
         except Exception as e:
             print(f"[VLM Engine] Groq failed: {e}. Trying Ollama fallback...")
 
-    # Ollama fallback
-    return await _call_ollama(user_text, screenshot_b64)
+    # Then Ollama
+    try:
+        return await _call_ollama(user_text, screenshot_b64)
+    except Exception as e:
+        print(f"[VLM Engine] Ollama failed: {e}. Trying OpenAI fallback...")
+        
+    # Finally OpenAI (GPT-4o)
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if OPENAI_API_KEY:
+        try:
+            return await _call_openai(user_text, screenshot_b64, OPENAI_API_KEY)
+        except Exception as e:
+            print(f"[VLM Engine] OpenAI failed: {e}.")
+            raise Exception("All VLM providers failed.")
+            
+    raise Exception("All VLM providers failed and no OpenAI fallback available.")
 
 
 def _build_user_message(
@@ -245,3 +259,54 @@ async def _call_ollama(user_text: str, screenshot_b64: str) -> dict:
         )
     except Exception as e:
         raise RuntimeError(f"Ollama request failed: {e}")
+
+
+async def _call_openai(user_text: str, screenshot_b64: str, api_key: str) -> dict:
+    """Calls OpenAI API as a final fallback for demo reliability."""
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": user_text},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{screenshot_b64}"
+                    },
+                },
+            ],
+        },
+    ]
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": 1024,
+        "response_format": {"type": "json_object"}
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            
+        raw_output = data["choices"][0]["message"]["content"]
+        print(f"[VLM Engine] OpenAI (gpt-4o-mini) returned {len(raw_output)} chars.")
+
+        return {
+            "raw_response": raw_output,
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+        }
+    except Exception as e:
+        print(f"[VLM Engine] OpenAI request failed: {e}")
+        raise e
