@@ -7,6 +7,8 @@
  *   2. Perform canvas-based visual redaction (blur, black, mosaic)
  *   3. Return sanitized screenshot + detection results to service worker
  */
+import { initFaceDetector, detectFaces } from '../privacy/face-detector.js';
+import { initOCR, detectOCRText } from '../privacy/ocr-detector.js';
 import { detectDOM } from '../privacy/dom-detector.js';
 import { detectRegex } from '../privacy/regex-detector.js';
 import { redactScreenshot as applyVisualRedaction } from '../redaction/visual-redactor.js';
@@ -35,8 +37,12 @@ function loadImage(dataUrl) {
 // Will be fully implemented by Privacy Engineer in Phase 3
 // ──────────────────────────────────────────────
 async function loadModels() {
-  console.log('[Offscreen] Loading ML models (stub)...');
-  // TODO: Phase 3 — Initialize ONNX Runtime, load BlazeFace and OCR
+  console.log('[Offscreen] Loading ML models...');
+  await Promise.all([
+    initFaceDetector(),
+    initOCR()
+  ]);
+  console.log('[Offscreen] ML models loaded successfully.');
   return true;
 }
 
@@ -53,11 +59,15 @@ async function runMLDetection(screenshotDataUrl, domSnapshot) {
   detections.push(...domDetections);
 
   // 2. Tier 1: Regex text scanning
-  const regexDetections = detectRegex(domSnapshot.visible_text_blocks, 'balanced');
+  const regexDetections = detectRegex(domSnapshot.visible_text_blocks || [], 'balanced');
   detections.push(...regexDetections);
 
-  // 3. Tier 2: BlazeFace (Mocked for E2E Phase 1)
-  console.log('[Offscreen] BlazeFace detection mocked.');
+  // 3. Tier 2: BlazeFace and OCR
+  const faceDetections = await detectFaces(screenshotDataUrl);
+  detections.push(...faceDetections);
+
+  const ocrDetections = await detectOCRText(screenshotDataUrl);
+  detections.push(...ocrDetections);
   
   return {
     detections,

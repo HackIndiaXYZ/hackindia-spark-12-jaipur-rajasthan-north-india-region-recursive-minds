@@ -17,6 +17,10 @@
     Communication: chrome.runtime.sendMessage / onMessage with the service worker.
   -->
   <canvas id="redaction-canvas" style="display:none;"></canvas>
+  <!-- Expose ML libraries globally -->
+  <script src="../lib/ort.min.js"></script>
+  <script src="../lib/tesseract/tesseract.min.js"></script>
+  <!-- Load the worker module -->
   <script type="module" src="offscreen-worker.js"></script>
 </body>
 </html>
