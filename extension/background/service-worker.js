@@ -36,6 +36,11 @@ function notifyPopup(message) {
 
 function notifyStatus(step) {
   notifyPopup({ type: 'PIPELINE_STATUS', step });
+  // Update badge to show current step
+  const badges = { capture: '📷', detect: '🔍', redact: '🛡️', send: '📤', execute: '⚡' };
+  const colors = { capture: '#60a5fa', detect: '#fbbf24', redact: '#f87171', send: '#34d399', execute: '#a78bfa' };
+  chrome.action.setBadgeText({ text: badges[step] || '…' });
+  chrome.action.setBadgeBackgroundColor({ color: colors[step] || '#818cf8' });
 }
 
 // ──────────────────────────────────────────────
@@ -261,27 +266,41 @@ async function runPipeline(userPrompt) {
     const explanation = serverResponse?.explanation || '';
     
     // Notify popup with results before executing
+    // Include screenshots for the preview panel
     notifyPopup({
       type: 'PIPELINE_COMPLETE',
       privacySummary,
       timings: { ...timings, execute: 0 },
       actions,
       explanation,
+      redactedScreenshot: sanitizedScreenshot,
+      originalScreenshot: screenshotDataUrl,
     });
 
-    if (actions.length > 0) {
+    // Check if auto-execute is enabled
+    const settings = await chrome.storage.local.get(['autoExecute']);
+    const autoExecute = settings.autoExecute !== false; // default true
+
+    if (actions.length > 0 && autoExecute) {
       await executeActions(tab.id, actions);
     }
     timings.execute = Math.round(performance.now() - t0);
 
-    // Final timing update
+    // Final timing update with execute time
     notifyPopup({
       type: 'PIPELINE_COMPLETE',
       privacySummary,
       timings,
       actions,
       explanation,
+      redactedScreenshot: sanitizedScreenshot,
+      originalScreenshot: screenshotDataUrl,
     });
+
+    // Clear badge on completion
+    chrome.action.setBadgeText({ text: '✓' });
+    chrome.action.setBadgeBackgroundColor({ color: '#34d399' });
+    setTimeout(() => chrome.action.setBadgeText({ text: '' }), 3000);
 
   } catch (error) {
     console.error('[Veilex] Pipeline error:', error);
@@ -289,6 +308,10 @@ async function runPipeline(userPrompt) {
       type: 'PIPELINE_ERROR',
       error: error.message || 'An unexpected error occurred.',
     });
+    // Show error badge
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#f87171' });
+    setTimeout(() => chrome.action.setBadgeText({ text: '' }), 5000);
   } finally {
     pipelineRunning = false;
   }
