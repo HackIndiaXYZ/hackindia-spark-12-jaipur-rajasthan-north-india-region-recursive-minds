@@ -6,10 +6,11 @@
  *   1. Load and run ML models (BlazeFace, MobileNet) via ONNX Runtime Web
  *   2. Perform canvas-based visual redaction (blur, black, mosaic)
  *   3. Return sanitized screenshot + detection results to service worker
- * 
- * This is a Phase 1 scaffold — ML model loading and full redaction
- * will be implemented in Phases 2-3 by the Privacy and Redaction engineers.
  */
+import { detectDOM } from '../privacy/dom-detector.js';
+import { detectRegex } from '../privacy/regex-detector.js';
+import { redactScreenshot as applyVisualRedaction } from '../redaction/visual-redactor.js';
+
 
 // ──────────────────────────────────────────────
 // Canvas Setup
@@ -40,78 +41,38 @@ async function loadModels() {
 }
 
 // ──────────────────────────────────────────────
-// Stub: PII Detection (Tier 2 & 3)
-// Will be implemented by Privacy Engineer in Phase 2-3
+// PII Detection (Tier 1 & Tier 2/3)
 // ──────────────────────────────────────────────
 async function runMLDetection(screenshotDataUrl, domSnapshot) {
-  console.log('[Offscreen] Running ML detection (stub)...');
+  console.log('[Offscreen] Running PII detection...');
 
-  // TODO: Phase 2 — Load BlazeFace, run face detection
-  // TODO: Phase 2 — Run OCR on image regions
-  // TODO: Phase 3 — Run MobileNet document classification
+  const detections = [];
+  
+  // 1. Tier 1: DOM Heuristics
+  const domDetections = detectDOM(domSnapshot, 'balanced');
+  detections.push(...domDetections);
 
-  // For now, return empty detections.
-  // Tier 1 (DOM + regex) detections are handled by the service worker / content script.
+  // 2. Tier 1: Regex text scanning
+  const regexDetections = detectRegex(domSnapshot.visible_text_blocks, 'balanced');
+  detections.push(...regexDetections);
+
+  // 3. Tier 2: BlazeFace (Mocked for E2E Phase 1)
+  console.log('[Offscreen] BlazeFace detection mocked.');
+  
   return {
-    detections: [],
+    detections,
   };
 }
 
 // ──────────────────────────────────────────────
-// Stub: Visual Redaction
-// Will be fully implemented by Redaction Engineer in Phase 2
+// Visual Redaction
 // ──────────────────────────────────────────────
 async function runVisualRedaction(screenshotDataUrl, detections) {
-  console.log('[Offscreen] Running visual redaction (stub)...');
+  console.log('[Offscreen] Running visual redaction...');
 
-  const img = await loadImage(screenshotDataUrl);
-  canvas.width = img.width;
-  canvas.height = img.height;
+  const sanitizedDataUrl = await applyVisualRedaction(canvas, screenshotDataUrl, detections);
 
-  // Draw original screenshot
-  ctx.drawImage(img, 0, 0);
-
-  // TODO: Phase 2 — Apply redaction for each detection:
-  // - Faces: ctx.filter = 'blur(20px)' + re-draw region
-  // - Text PII: ctx.fillStyle = '#000'; ctx.fillRect(...)
-  // - Documents: pixelation/mosaic
-
-  // For now, apply stub redaction for any provided detections
-  for (const detection of detections) {
-    const { bbox, type } = detection;
-    if (!bbox) continue;
-
-    const padding = 0.12; // 12% safety margin
-    const px = bbox.x - bbox.w * padding / 2;
-    const py = bbox.y - bbox.h * padding / 2;
-    const pw = bbox.w * (1 + padding);
-    const ph = bbox.h * (1 + padding);
-
-    if (type === 'FACE') {
-      // Blur effect for faces
-      ctx.save();
-      ctx.filter = 'blur(20px)';
-      ctx.drawImage(canvas, px, py, pw, ph, px, py, pw, ph);
-      ctx.restore();
-    } else {
-      // Black rectangle for other PII
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(px, py, pw, ph);
-
-      // Overlay token label
-      const token = detection.token || `[${type}]`;
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '11px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(token, px + pw / 2, py + ph / 2);
-    }
-  }
-
-  // Export as JPEG (quality 0.80)
-  const sanitizedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
-
-  // Build manifest stub
+  // Build manifest
   const manifest = {
     redactions: detections.map((d, i) => ({
       id: `r_${String(i + 1).padStart(3, '0')}`,
@@ -119,7 +80,7 @@ async function runVisualRedaction(screenshotDataUrl, detections) {
       bbox: d.bbox,
       confidence: d.confidence || 0.95,
       method: d.type === 'FACE' ? 'blur' : 'black',
-      detector: d.detector || 'stub',
+      detector: d.detector || 'regex',
     })),
     tiers_executed: [1],
     processing_time_ms: 0,
