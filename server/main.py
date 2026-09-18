@@ -1,17 +1,18 @@
+import os
+from dotenv import load_dotenv
+
+# Load env before any local imports
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(env_path)
+
 import logging
 import time
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import AnalyzeRequest, AnalyzeResponse, Action
 from .vlm_engine import analyze_context
 from .action_generator import generate_actions, extract_explanation, is_goal_complete
-
-# ──────────────────────────────────────────────
-# Load environment variables from .env
-# ──────────────────────────────────────────────
-load_dotenv()
 
 # ──────────────────────────────────────────────
 # Logging

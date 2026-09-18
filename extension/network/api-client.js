@@ -18,6 +18,8 @@ const SERVER_URL = 'http://localhost:8000';
  * @param {Object} payload.viewport
  * @returns {Promise<Array>} List of actions returned by the VLM
  */
+import { validateActions } from '../background/action-validator.js';
+
 export async function analyzeContext(payload) {
   try {
     // Add timestamp per API schema
@@ -37,28 +39,14 @@ export async function analyzeContext(payload) {
     }
 
     const data = await response.json();
-    const actions = data.actions || [];
     
-    // Action Validator (Dev 5 Phase 2)
-    const validatedActions = actions.filter(action => {
-      // 1. Safety check for navigation
-      if (action.type === 'navigate') {
-        try {
-          const targetUrl = new URL(action.value);
-          // Block navigation to dangerous schemas or vastly different domains if desired
-          if (['javascript:', 'data:', 'file:'].includes(targetUrl.protocol)) {
-            console.warn('[API Client] Blocked unsafe navigation schema:', action.value);
-            return false;
-          }
-        } catch (e) {
-          console.warn('[API Client] Blocked invalid navigation URL:', action.value);
-          return false;
-        }
-      }
-      return true;
-    });
+    // Action Validator (Phase 3 Integration Engineering)
+    const validatedActions = validateActions(data.actions || []);
 
-    return validatedActions;
+    return {
+      actions: validatedActions,
+      explanation: data.explanation || ''
+    };
   } catch (error) {
     console.error('[API Client] Request failed:', error);
     throw error;

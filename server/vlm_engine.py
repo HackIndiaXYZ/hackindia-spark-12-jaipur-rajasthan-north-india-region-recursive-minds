@@ -164,7 +164,7 @@ async def _call_groq(user_text: str, screenshot_b64: str) -> dict:
     ]
 
     response = await client.chat.completions.create(
-        model="llama-3.2-90b-vision-preview",
+        model="qwen/qwen3.8-27b",
         messages=messages,
         temperature=0.1,
         max_tokens=1024,
@@ -176,7 +176,7 @@ async def _call_groq(user_text: str, screenshot_b64: str) -> dict:
     return {
         "raw_response": raw_output,
         "provider": "groq",
-        "model": "llama-3.2-90b-vision-preview",
+        "model": "qwen/qwen3.8-27b",
     }
 
 

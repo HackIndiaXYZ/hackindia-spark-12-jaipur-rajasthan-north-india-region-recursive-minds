@@ -245,7 +245,7 @@ async function runPipeline(userPrompt) {
       // ── Step 5: Package & Send to Server ──
       notifyStatus('send');
       t0 = performance.now();
-      const actions = await sendToServer({
+      const serverResponse = await sendToServer({
         screenshot_b64: sanitizedScreenshot,
         dom_snapshot: sanitizedDOM || domSnapshot,
         redaction_manifest: manifest,
@@ -260,12 +260,15 @@ async function runPipeline(userPrompt) {
       notifyStatus('execute');
       t0 = performance.now();
       
+      const actions = serverResponse.actions || [];
+      const explanation = serverResponse.explanation || "Processed step " + stepCount;
+      
       notifyPopup({
         type: 'PIPELINE_COMPLETE',
         privacySummary,
         timings: { ...timings, execute: 0 },
         actions,
-        explanation: "Processed step " + stepCount,
+        explanation,
         redactedScreenshot: sanitizedScreenshot,
         originalScreenshot: screenshotDataUrl,
       });
