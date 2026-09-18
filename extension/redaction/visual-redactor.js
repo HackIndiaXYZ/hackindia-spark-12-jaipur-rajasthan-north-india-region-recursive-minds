@@ -33,6 +33,10 @@ export async function redactScreenshot(canvas, screenshotDataUrl, detections) {
     canvas.width = img.width;
     canvas.height = img.height;
     
+    // Reusable small canvas for mosaic to avoid GC churn in loops
+    const smallCanvas = document.createElement('canvas');
+    const smallCtx = smallCanvas.getContext('2d');
+    
     // Draw original
     ctx.drawImage(img, 0, 0);
 
@@ -40,12 +44,20 @@ export async function redactScreenshot(canvas, screenshotDataUrl, detections) {
       const { bbox, type, token } = detection;
       if (!bbox) continue;
 
-      // 12% safety margin around the detected area
-      const padding = 0.12; 
-      const px = bbox.x - (bbox.width * padding / 2);
-      const py = bbox.y - (bbox.height * padding / 2);
-      const pw = bbox.width * (1 + padding);
-      const ph = bbox.height * (1 + padding);
+      // 15% safety margin around the detected area to prevent edge leakage
+      const padding = 0.15; 
+      let px = bbox.x - (bbox.width * padding / 2);
+      let py = bbox.y - (bbox.height * padding / 2);
+      let pw = bbox.width * (1 + padding);
+      let ph = bbox.height * (1 + padding);
+
+      // Edge case: clamp bounds to canvas to avoid off-screen/scrolled artifacts
+      px = Math.max(0, px);
+      py = Math.max(0, py);
+      pw = Math.min(canvas.width - px, pw);
+      ph = Math.min(canvas.height - py, ph);
+      
+      if (pw <= 0 || ph <= 0) continue;
 
       if (type === 'FACE') {
         // Blur effect for faces
@@ -60,10 +72,9 @@ export async function redactScreenshot(canvas, screenshotDataUrl, detections) {
         ctx.imageSmoothingEnabled = false;
         // Draw small
         const pixelScale = 0.05;
-        const smallCanvas = document.createElement('canvas');
-        smallCanvas.width = pw * pixelScale;
-        smallCanvas.height = ph * pixelScale;
-        smallCanvas.getContext('2d').drawImage(canvas, px, py, pw, ph, 0, 0, smallCanvas.width, smallCanvas.height);
+        smallCanvas.width = Math.max(1, pw * pixelScale);
+        smallCanvas.height = Math.max(1, ph * pixelScale);
+        smallCtx.drawImage(canvas, px, py, pw, ph, 0, 0, smallCanvas.width, smallCanvas.height);
         // Draw back scaled up
         ctx.drawImage(smallCanvas, 0, 0, smallCanvas.width, smallCanvas.height, px, py, pw, ph);
         ctx.restore();
