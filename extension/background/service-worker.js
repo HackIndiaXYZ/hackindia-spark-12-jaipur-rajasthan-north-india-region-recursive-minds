@@ -114,7 +114,6 @@ async function extractDOM(tabId) {
 // Step 3: Run PII Detection (Tier 1 in SW, Tier 2/3 via offscreen)
 // ──────────────────────────────────────────────
 async function runPIIDetection(screenshotDataUrl, domSnapshot) {
-  // For Phase 1, this is a stub.
   // Tier 1 (DOM + regex) will run here directly.
   // Tier 2/3 (ML models) will be delegated to offscreen document.
 
@@ -231,7 +230,7 @@ async function runPipeline(userPrompt) {
       const detections = await runPIIDetection(screenshotDataUrl, domSnapshot);
       timings.detect = Math.round(performance.now() - t0);
 
-      // ── Step 4, 5, 6: Redact & Manifest ──
+      // ── Step 4: Redact & Manifest ──
       notifyStatus('redact');
       t0 = performance.now();
       const { sanitizedScreenshot, sanitizedDOM, manifest } = await runRedaction(
@@ -243,7 +242,7 @@ async function runPipeline(userPrompt) {
 
       const privacySummary = manifest?.summary || {};
 
-      // ── Step 7 & 8: Package & Send to Server ──
+      // ── Step 5: Package & Send to Server ──
       notifyStatus('send');
       t0 = performance.now();
       const actions = await sendToServer({
@@ -257,7 +256,7 @@ async function runPipeline(userPrompt) {
       });
       timings.send = Math.round(performance.now() - t0);
 
-      // ── Step 9 & 10: Validate & Execute Actions ──
+      // ── Step 6: Execute Actions ──
       notifyStatus('execute');
       t0 = performance.now();
       

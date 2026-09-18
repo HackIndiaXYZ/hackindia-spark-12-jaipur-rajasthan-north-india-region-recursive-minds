@@ -13,6 +13,7 @@ import { detectDOM } from '../privacy/dom-detector.js';
 import { detectRegex } from '../privacy/regex-detector.js';
 import { redactScreenshot as applyVisualRedaction } from '../redaction/visual-redactor.js';
 import { redactDOM } from '../redaction/dom-redactor.js';
+import { generateManifest } from '../redaction/manifest-generator.js';
 
 // ──────────────────────────────────────────────
 // Canvas Setup
@@ -33,8 +34,7 @@ function loadImage(dataUrl) {
 }
 
 // ──────────────────────────────────────────────
-// Stub: ML Model Loading
-// Will be fully implemented by Privacy Engineer in Phase 3
+// ML Model Loading
 // ──────────────────────────────────────────────
 async function loadModels() {
   console.log('[Offscreen] Loading ML models...');
@@ -75,32 +75,21 @@ async function runMLDetection(screenshotDataUrl, domSnapshot) {
 }
 
 // ──────────────────────────────────────────────
-// Visual Redaction
+// Redaction Pipeline
 // ──────────────────────────────────────────────
 async function runRedaction(screenshotDataUrl, detections, domSnapshot) {
-  console.log('[Offscreen] Running visual and DOM redaction...');
+  console.log('[Offscreen] Running redaction pipeline...');
 
+  // Visual redaction via dedicated module
+  const t0 = performance.now();
   const sanitizedDataUrl = await applyVisualRedaction(canvas, screenshotDataUrl, detections);
-  const sanitizedDOM = redactDOM(domSnapshot, detections);
 
-  // Build manifest
-  const manifest = {
-    redactions: detections.map((d, i) => ({
-      id: `r_${String(i + 1).padStart(3, '0')}`,
-      type: d.type,
-      bbox: d.bbox,
-      confidence: d.confidence || 0.95,
-      method: d.type === 'FACE' ? 'blur' : 'black',
-      detector: d.detector || 'regex',
-    })),
-    tiers_executed: [1],
-    processing_time_ms: 0,
-    total_pii_found: detections.length,
-    summary: detections.reduce((acc, d) => {
-      acc[d.type] = (acc[d.type] || 0) + 1;
-      return acc;
-    }, {}),
-  };
+  // DOM redaction
+  const sanitizedDOM = redactDOM(domSnapshot, detections);
+  const processingTimeMs = Math.round(performance.now() - t0);
+
+  // Build manifest via dedicated module
+  const manifest = generateManifest(detections, processingTimeMs);
 
   return {
     sanitizedScreenshot: sanitizedDataUrl,
