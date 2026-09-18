@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Veilex Offscreen Worker</title>
+</head>
+<body>
+  <!--
+    Veilex Offscreen Document
+    
+    This document runs in an offscreen context (not visible to the user).
+    It hosts:
+    1. A <canvas> for screenshot redaction operations
+    2. ONNX Runtime Web for ML model inference (face detection, classification)
+    3. Web Workers for non-blocking inference
+    
+    Communication: chrome.runtime.sendMessage / onMessage with the service worker.
+  -->
+  <canvas id="redaction-canvas" style="display:none;"></canvas>
+  <script src="offscreen-worker.js"></script>
+</body>
+</html>

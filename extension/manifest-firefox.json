@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "name": "Veilex — Privacy Vision Agent",
+  "version": "1.0.0",
+  "description": "A privacy-preserving browser vision agent that redacts PII locally before sending sanitized context to an AI server for intelligent browser automation.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "veilex@recursive-minds",
+      "strict_min_version": "115.0"
+    }
+  },
+
+  "permissions": [
+    "activeTab",
+    "storage",
+    "<all_urls>"
+  ],
+
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Veilex — Privacy Vision Agent"
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "background": {
+    "scripts": ["lib/browser-polyfill.js", "background/service-worker.js"]
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["lib/browser-polyfill.js", "content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "commands": {
+    "activate-veilex": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+V",
+        "mac": "Command+Shift+V"
+      },
+      "description": "Activate Veilex privacy vision agent"
+    }
+  },
+
+  "web_accessible_resources": [
+    "models/*",
+    "lib/*"
+  ],
+
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+}
