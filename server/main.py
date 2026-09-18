@@ -10,9 +10,9 @@ import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import AnalyzeRequest, AnalyzeResponse, Action
-from .vlm_engine import analyze_context
-from .action_generator import generate_actions, extract_explanation, is_goal_complete
+from models import AnalyzeRequest, AnalyzeResponse, Action
+from vlm_engine import analyze_context
+from action_generator import generate_actions, extract_explanation, is_goal_complete
 
 # ──────────────────────────────────────────────
 # Logging
