@@ -13,7 +13,7 @@ class AnalyzeRequest(BaseModel):
     page_url: str = Field(..., description="Origin URL of the page")
     page_title: str = Field(..., description="Title of the page")
     viewport: Viewport
-    timestamp: str
+    timestamp: Optional[str] = None
 
 class Action(BaseModel):
     type: str = Field(..., description="Action type: 'click', 'type', 'navigate', 'scroll', 'select', 'wait', 'read'")
