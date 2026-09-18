@@ -37,7 +37,28 @@ export async function analyzeContext(payload) {
     }
 
     const data = await response.json();
-    return data.actions || [];
+    const actions = data.actions || [];
+    
+    // Action Validator (Dev 5 Phase 2)
+    const validatedActions = actions.filter(action => {
+      // 1. Safety check for navigation
+      if (action.type === 'navigate') {
+        try {
+          const targetUrl = new URL(action.value);
+          // Block navigation to dangerous schemas or vastly different domains if desired
+          if (['javascript:', 'data:', 'file:'].includes(targetUrl.protocol)) {
+            console.warn('[API Client] Blocked unsafe navigation schema:', action.value);
+            return false;
+          }
+        } catch (e) {
+          console.warn('[API Client] Blocked invalid navigation URL:', action.value);
+          return false;
+        }
+      }
+      return true;
+    });
+
+    return validatedActions;
   } catch (error) {
     console.error('[API Client] Request failed:', error);
     throw error;
