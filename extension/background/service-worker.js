@@ -12,6 +12,7 @@
  * 8. Forwards actions to content script for execution
  * 9. Loops for multi-step flows
  */
+import { analyzeContext } from '../network/api-client.js';
 
 // ──────────────────────────────────────────────
 // Constants
@@ -75,7 +76,7 @@ async function ensureOffscreenDocument() {
 
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
-      reasons: ['CANVAS', 'WORKERS'],
+      reasons: ['DOM_PARSER', 'WORKERS'],
       justification: 'Run ML inference for PII detection and canvas redaction',
     });
     offscreenDocumentCreated = true;
@@ -157,20 +158,7 @@ async function runRedaction(screenshotDataUrl, detections) {
 // Step 5: Send sanitized context to server
 // ──────────────────────────────────────────────
 async function sendToServer(sanitizedPayload) {
-  const settings = await chrome.storage.local.get(['serverUrl']);
-  const serverUrl = settings.serverUrl || 'http://localhost:8000';
-
-  const response = await fetch(`${serverUrl}/api/analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sanitizedPayload),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-  }
-
-  return await response.json();
+  return await analyzeContext(sanitizedPayload);
 }
 
 // ──────────────────────────────────────────────
@@ -208,7 +196,6 @@ async function executeActions(tabId, actions) {
 
 // ──────────────────────────────────────────────
 // Main Pipeline
-// ──────────────────────────────────────────────
 async function runPipeline(userPrompt) {
   if (pipelineRunning) {
     notifyPopup({ type: 'PIPELINE_ERROR', error: 'Pipeline is already running.' });
@@ -216,91 +203,98 @@ async function runPipeline(userPrompt) {
   }
 
   pipelineRunning = true;
-  const timings = {};
+  let stepCount = 0;
+  const maxSteps = 5;
+  let isComplete = false;
 
   try {
     const tab = await getActiveTab();
-    let t0;
 
-    // ── Step 1: Capture ──
-    notifyStatus('capture');
-    t0 = performance.now();
-    const screenshotDataUrl = await captureScreenshot();
-    const domSnapshot = await extractDOM(tab.id);
-    timings.capture = Math.round(performance.now() - t0);
+    while (stepCount < maxSteps && !isComplete && pipelineRunning) {
+      stepCount++;
+      const timings = {};
+      console.log(`[Veilex] Starting pipeline step ${stepCount}/${maxSteps}`);
+      
+      let t0;
 
-    // ── Step 2: Detect PII ──
-    notifyStatus('detect');
-    t0 = performance.now();
-    const detections = await runPIIDetection(screenshotDataUrl, domSnapshot);
-    timings.detect = Math.round(performance.now() - t0);
+      // ── Step 1 & 2: Capture & Extract ──
+      notifyStatus('capture');
+      t0 = performance.now();
+      const screenshotDataUrl = await captureScreenshot();
+      const domSnapshot = await extractDOM(tab.id);
+      timings.capture = Math.round(performance.now() - t0);
 
-    // ── Step 3: Redact ──
-    notifyStatus('redact');
-    t0 = performance.now();
-    const { sanitizedScreenshot, sanitizedDOM, manifest } = await runRedaction(
-      screenshotDataUrl,
-      detections
-    );
-    timings.redact = Math.round(performance.now() - t0);
+      // ── Step 3: Detect PII (Tier 1 & Tier 2) ──
+      notifyStatus('detect');
+      t0 = performance.now();
+      const detections = await runPIIDetection(screenshotDataUrl, domSnapshot);
+      timings.detect = Math.round(performance.now() - t0);
 
-    // Build privacy summary from manifest
-    const privacySummary = manifest?.summary || {};
+      // ── Step 4, 5, 6: Redact & Manifest ──
+      notifyStatus('redact');
+      t0 = performance.now();
+      const { sanitizedScreenshot, sanitizedDOM, manifest } = await runRedaction(
+        screenshotDataUrl,
+        detections
+      );
+      timings.redact = Math.round(performance.now() - t0);
 
-    // ── Step 4: Send to Server ──
-    notifyStatus('send');
-    t0 = performance.now();
-    const serverResponse = await sendToServer({
-      screenshot_b64: sanitizedScreenshot,
-      dom_snapshot: sanitizedDOM || domSnapshot,
-      redaction_manifest: manifest,
-      user_prompt: userPrompt,
-      page_url: new URL(tab.url).origin, // Domain only — no path leakage
-      page_title: tab.title,
-      viewport: { width: tab.width, height: tab.height },
-      timestamp: new Date().toISOString(),
-    });
-    timings.send = Math.round(performance.now() - t0);
+      const privacySummary = manifest?.summary || {};
 
-    // ── Step 5: Execute Actions ──
-    notifyStatus('execute');
-    t0 = performance.now();
-    const actions = serverResponse?.actions || [];
-    const explanation = serverResponse?.explanation || '';
-    
-    // Notify popup with results before executing
-    // Include screenshots for the preview panel
-    notifyPopup({
-      type: 'PIPELINE_COMPLETE',
-      privacySummary,
-      timings: { ...timings, execute: 0 },
-      actions,
-      explanation,
-      redactedScreenshot: sanitizedScreenshot,
-      originalScreenshot: screenshotDataUrl,
-    });
+      // ── Step 7 & 8: Package & Send to Server ──
+      notifyStatus('send');
+      t0 = performance.now();
+      const actions = await sendToServer({
+        screenshot_b64: sanitizedScreenshot,
+        dom_snapshot: sanitizedDOM || domSnapshot,
+        redaction_manifest: manifest,
+        user_prompt: userPrompt,
+        page_url: new URL(tab.url).origin,
+        page_title: tab.title,
+        viewport: { width: tab.width, height: tab.height }
+      });
+      timings.send = Math.round(performance.now() - t0);
 
-    // Check if auto-execute is enabled
-    const settings = await chrome.storage.local.get(['autoExecute']);
-    const autoExecute = settings.autoExecute !== false; // default true
+      // ── Step 9 & 10: Validate & Execute Actions ──
+      notifyStatus('execute');
+      t0 = performance.now();
+      
+      notifyPopup({
+        type: 'PIPELINE_COMPLETE',
+        privacySummary,
+        timings: { ...timings, execute: 0 },
+        actions,
+        explanation: "Processed step " + stepCount,
+        redactedScreenshot: sanitizedScreenshot,
+        originalScreenshot: screenshotDataUrl,
+      });
 
-    if (actions.length > 0 && autoExecute) {
-      await executeActions(tab.id, actions);
+      const settings = await chrome.storage.local.get(['autoExecute']);
+      const autoExecute = settings.autoExecute !== false; // default true
+
+      if (actions.length > 0 && autoExecute) {
+        await executeActions(tab.id, actions);
+      } else {
+        isComplete = true; // No actions returned, meaning goal is complete or cannot proceed
+      }
+      timings.execute = Math.round(performance.now() - t0);
+
+      notifyPopup({
+        type: 'PIPELINE_COMPLETE',
+        privacySummary,
+        timings,
+        actions,
+        explanation: isComplete ? "Goal Complete" : "Action Executed",
+        redactedScreenshot: sanitizedScreenshot,
+        originalScreenshot: screenshotDataUrl,
+      });
+
+      if (!isComplete && stepCount < maxSteps) {
+        // Wait 1 second before next loop to allow DOM updates
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
-    timings.execute = Math.round(performance.now() - t0);
 
-    // Final timing update with execute time
-    notifyPopup({
-      type: 'PIPELINE_COMPLETE',
-      privacySummary,
-      timings,
-      actions,
-      explanation,
-      redactedScreenshot: sanitizedScreenshot,
-      originalScreenshot: screenshotDataUrl,
-    });
-
-    // Clear badge on completion
     chrome.action.setBadgeText({ text: '✓' });
     chrome.action.setBadgeBackgroundColor({ color: '#34d399' });
     setTimeout(() => chrome.action.setBadgeText({ text: '' }), 3000);
@@ -311,7 +305,6 @@ async function runPipeline(userPrompt) {
       type: 'PIPELINE_ERROR',
       error: error.message || 'An unexpected error occurred.',
     });
-    // Show error badge
     chrome.action.setBadgeText({ text: '!' });
     chrome.action.setBadgeBackgroundColor({ color: '#f87171' });
     setTimeout(() => chrome.action.setBadgeText({ text: '' }), 5000);
