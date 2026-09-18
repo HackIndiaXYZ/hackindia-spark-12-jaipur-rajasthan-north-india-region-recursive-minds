@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Veilex Demo Page</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f4f4f9; padding: 2rem; max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        h2 { margin-top: 0; color: #333; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #555; }
+        input { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { background: #6366f1; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #4f46e5; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Secure Login</h2>
+        <form id="loginForm" onsubmit="event.preventDefault(); alert('Login submitted!');">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password">
+            </div>
+            <button type="submit" id="loginBtn">Sign In</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Update Payment Profile</h2>
+        <form id="paymentForm" onsubmit="event.preventDefault(); alert('Payment updated!');">
+            <div class="form-group">
+                <label for="cc">Credit Card Number</label>
+                <!-- Using type="text" instead of cc to test heuristics -->
+                <input type="text" id="cc" name="card_number" placeholder="0000 0000 0000 0000" autocomplete="cc-number">
+            </div>
+            <div class="form-group">
+                <label for="ssn">Social Security Number</label>
+                <input type="text" id="ssn" name="ssn" placeholder="XXX-XX-XXXX">
+            </div>
+            <button type="submit" id="savePaymentBtn">Save Changes</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Sample Text PII (For Regex Testing)</h2>
+        <p>Please contact support at <strong>support@veilex.app</strong> or call <strong>1-800-555-1234</strong>.</p>
+        <p>Your temporary PIN is 4567, and your file number is <strong>123-45-6789</strong>.</p>
+    </div>
+
+</body>
+</html>
