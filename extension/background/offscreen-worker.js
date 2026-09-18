@@ -14,6 +14,8 @@ import { detectRegex } from '../privacy/regex-detector.js';
 import { redactScreenshot as applyVisualRedaction } from '../redaction/visual-redactor.js';
 import { redactDOM } from '../redaction/dom-redactor.js';
 import { generateManifest } from '../redaction/manifest-generator.js';
+import { detectHardwareTier, TIERS } from '../core/hardware-profiler.js';
+import { initVisionModel, detectDocumentType } from '../privacy/vision-model.js';
 
 // ──────────────────────────────────────────────
 // Canvas Setup
@@ -36,12 +38,25 @@ function loadImage(dataUrl) {
 // ──────────────────────────────────────────────
 // ML Model Loading
 // ──────────────────────────────────────────────
+let currentTier = TIERS.TIER_1;
+
 async function loadModels() {
-  console.log('[Offscreen] Loading ML models...');
-  await Promise.all([
-    initFaceDetector(),
-    initOCR()
-  ]);
+  console.log('[Offscreen] Detecting hardware tier...');
+  currentTier = detectHardwareTier();
+  
+  console.log(`[Offscreen] Loading ML models for Tier ${currentTier}...`);
+  const loadPromises = [];
+
+  if (currentTier >= TIERS.TIER_2) {
+    loadPromises.push(initFaceDetector());
+    loadPromises.push(initOCR());
+  }
+  
+  if (currentTier >= TIERS.TIER_3) {
+    loadPromises.push(initVisionModel());
+  }
+
+  await Promise.all(loadPromises);
   console.log('[Offscreen] ML models loaded successfully.');
   return true;
 }
@@ -54,20 +69,27 @@ async function runMLDetection(screenshotDataUrl, domSnapshot) {
 
   const detections = [];
   
-  // 1. Tier 1: DOM Heuristics
+  // 1. Tier 1: DOM Heuristics (Runs on all tiers)
   const domDetections = detectDOM(domSnapshot, 'balanced');
   detections.push(...domDetections);
 
-  // 2. Tier 1: Regex text scanning
   const regexDetections = detectRegex(domSnapshot.visible_text_blocks || [], 'balanced');
   detections.push(...regexDetections);
 
-  // 3. Tier 2: BlazeFace and OCR
-  const faceDetections = await detectFaces(screenshotDataUrl);
-  detections.push(...faceDetections);
+  // 2. Tier 2: BlazeFace and OCR
+  if (currentTier >= TIERS.TIER_2) {
+    const faceDetections = await detectFaces(screenshotDataUrl);
+    detections.push(...faceDetections);
 
-  const ocrDetections = await detectOCRText(screenshotDataUrl);
-  detections.push(...ocrDetections);
+    const ocrDetections = await detectOCRText(screenshotDataUrl);
+    detections.push(...ocrDetections);
+  }
+
+  // 3. Tier 3: MobileNet-v2 Document Classification
+  if (currentTier >= TIERS.TIER_3) {
+    const docDetections = await detectDocumentType(screenshotDataUrl);
+    detections.push(...docDetections);
+  }
   
   return {
     detections,

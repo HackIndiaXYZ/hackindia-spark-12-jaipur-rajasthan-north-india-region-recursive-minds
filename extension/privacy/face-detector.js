@@ -111,7 +111,7 @@ export async function detectFaces(dataUrl) {
              score = 1 / (1 + Math.exp(-score));
           }
           
-          if (score > 0.5) { // Threshold
+          if (score > 0.75) { // Threshold tuned for precision
             const [cx, cy] = anchors[i];
             
             // Box offsets
