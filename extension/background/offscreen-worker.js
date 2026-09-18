@@ -10,7 +10,7 @@
 import { detectDOM } from '../privacy/dom-detector.js';
 import { detectRegex } from '../privacy/regex-detector.js';
 import { redactScreenshot as applyVisualRedaction } from '../redaction/visual-redactor.js';
-
+import { redactDOM } from '../redaction/dom-redactor.js';
 
 // ──────────────────────────────────────────────
 // Canvas Setup
@@ -67,10 +67,11 @@ async function runMLDetection(screenshotDataUrl, domSnapshot) {
 // ──────────────────────────────────────────────
 // Visual Redaction
 // ──────────────────────────────────────────────
-async function runVisualRedaction(screenshotDataUrl, detections) {
-  console.log('[Offscreen] Running visual redaction...');
+async function runRedaction(screenshotDataUrl, detections, domSnapshot) {
+  console.log('[Offscreen] Running visual and DOM redaction...');
 
   const sanitizedDataUrl = await applyVisualRedaction(canvas, screenshotDataUrl, detections);
+  const sanitizedDOM = redactDOM(domSnapshot, detections);
 
   // Build manifest
   const manifest = {
@@ -93,6 +94,7 @@ async function runVisualRedaction(screenshotDataUrl, detections) {
 
   return {
     sanitizedScreenshot: sanitizedDataUrl,
+    sanitizedDOM,
     manifest,
   };
 }
@@ -118,7 +120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Async
 
     case 'RUN_REDACTION':
-      runVisualRedaction(message.payload.screenshot, message.payload.detections)
+      runRedaction(message.payload.screenshot, message.payload.detections, message.payload.domSnapshot)
         .then((result) => sendResponse(result))
         .catch((e) => sendResponse({ error: e.message }));
       return true; // Async
