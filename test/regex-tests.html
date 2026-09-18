@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Regex Detector Tests</title>
+  <style>
+    body { font-family: system-ui; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    .summary { font-size: 1.2rem; margin-bottom: 2rem; padding: 1rem; background: #f0f0f0; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Veilex — Regex Detector Unit Tests</h1>
+  <div id="summary" class="summary">Running tests...</div>
+  <div id="results"></div>
+
+  <!-- We load our modules as module scripts to access the functions -->
+  <script type="module">
+    import { detectRegex } from '../extension/privacy/regex-detector.js';
+
+    const testCases = [
+      // ── EMAIL ──
+      { text: "My email is test@example.com, please contact me.", type: 'EMAIL', expected: true },
+      { text: "Invalid email like test@.com or @domain.com.", type: 'EMAIL', expected: false },
+      
+      // ── PHONE ──
+      { text: "Call me at 123-456-7890.", type: 'PHONE', expected: true },
+      { text: "Call me at (123) 456-7890.", type: 'PHONE', expected: true },
+      { text: "Not a phone: 12345.", type: 'PHONE', expected: false },
+      
+      // ── SSN ──
+      { text: "My SSN is 123-45-6789.", type: 'SSN', expected: true },
+      { text: "Fake SSN: 12-45-6789.", type: 'SSN', expected: false },
+      
+      // ── CREDIT CARD (Luhn) ──
+      // Valid Visa (passes luhn)
+      { text: "Here is my card: 4111 1111 1111 1111.", type: 'CREDIT_CARD', expected: true },
+      // Invalid Visa (fails luhn)
+      { text: "Here is my card: 4111 1111 1111 1112.", type: 'CREDIT_CARD', expected: false },
+      
+      // ── AADHAAR ──
+      { text: "Aadhaar: 1234 5678 9012.", type: 'AADHAAR', expected: true },
+      { text: "Aadhaar: 1234 5678 901.", type: 'AADHAAR', expected: false },
+      
+      // ── PAN ──
+      { text: "My PAN is ABCDE1234F.", type: 'PAN', expected: true },
+      { text: "Invalid PAN: 12345ABCDE.", type: 'PAN', expected: false },
+      
+      // ── IP ADDRESS ──
+      { text: "Server IP is 192.168.1.1.", type: 'IP_ADDRESS', expected: true },
+      { text: "Not an IP: 256.256.256.256.", type: 'IP_ADDRESS', expected: false },
+      
+      // ── DOB ──
+      { text: "I was born on 12/31/1999.", type: 'DOB', expected: true },
+      { text: "I was born on 1999-12-31.", type: 'DOB', expected: true },
+      { text: "Invalid DOB: 13/32/1999.", type: 'DOB', expected: false }
+    ];
+
+    let passed = 0;
+    const resultsDiv = document.getElementById('results');
+
+    testCases.forEach((tc, idx) => {
+      // Mock the text block format expected by detectRegex
+      const textBlocks = [{ text: tc.text, bbox: { x: 0, y: 0, w: 100, h: 20 } }];
+      const detections = detectRegex(textBlocks, 'balanced');
+      
+      // Check if the specific type was detected
+      const found = detections.some(d => d.type === tc.type);
+      const isPass = found === tc.expected;
+      if (isPass) passed++;
+
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <span class="${isPass ? 'pass' : 'fail'}">${isPass ? 'PASS' : 'FAIL'}</span> | 
+        Type: <strong>${tc.type}</strong> | 
+        Expected: ${tc.expected ? 'Match' : 'No Match'} | 
+        Text: <em>"${tc.text}"</em>
+      `;
+      resultsDiv.appendChild(div);
+    });
+
+    document.getElementById('summary').innerHTML = `
+      Test Summary: ${passed} / ${testCases.length} passed
+      ${passed === testCases.length ? '✅ All tests passed!' : '❌ Some tests failed.'}
+    `;
+  </script>
+</body>
+</html>
