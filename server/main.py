@@ -39,10 +39,25 @@ app.add_middleware(
 )
 
 
+# ──────────────────────────────────────────────
+# Analytics & Metrics Tracker
+# ──────────────────────────────────────────────
+analytics = {
+    "total_requests": 0,
+    "successful_requests": 0,
+    "failed_requests": 0,
+    "total_vlm_time": 0.0,
+    "errors": {}
+}
+
 @app.get("/api/health")
 async def health_check():
     """Simple health check endpoint for the extension to poll."""
-    return {"status": "online", "version": "0.3.0"}
+    return {
+        "status": "online", 
+        "version": "0.3.0",
+        "analytics": analytics
+    }
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
@@ -51,6 +66,7 @@ async def analyze_endpoint(request: AnalyzeRequest):
     Main pipeline endpoint:
     Receives sanitized context, runs VLM analysis, and returns actions.
     """
+    analytics["total_requests"] += 1
     t0 = time.time()
 
     # Log request metadata
@@ -89,6 +105,8 @@ async def analyze_endpoint(request: AnalyzeRequest):
             explanation = explanation or "Goal appears to be complete."
 
         total_time = time.time() - t0
+        analytics["successful_requests"] += 1
+        analytics["total_vlm_time"] += vlm_time
 
         logger.info(
             "📤 Response | provider=%s | actions=%d | complete=%s | vlm=%.1fs | total=%.1fs",
@@ -105,9 +123,15 @@ async def analyze_endpoint(request: AnalyzeRequest):
         )
 
     except ConnectionError as e:
+        analytics["failed_requests"] += 1
+        error_type = "ConnectionError"
+        analytics["errors"][error_type] = analytics["errors"].get(error_type, 0) + 1
         logger.error("🔴 VLM connection error: %s", e)
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        analytics["failed_requests"] += 1
+        error_type = type(e).__name__
+        analytics["errors"][error_type] = analytics["errors"].get(error_type, 0) + 1
         logger.error("🔴 Pipeline error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

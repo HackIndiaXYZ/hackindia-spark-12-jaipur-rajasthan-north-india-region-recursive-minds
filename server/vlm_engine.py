@@ -35,7 +35,9 @@ Your objective is to accomplish the user's goal by analyzing the current screen 
 - Keep each step focused — return 1–5 actions per step. Don't try to do everything at once.
 
 ## Response Format
-You MUST respond with ONLY a JSON object (no markdown fences, no explanation outside the JSON). The JSON must have this exact structure:
+You MUST respond with ONLY a valid JSON object (no markdown fences like ```json, no explanation outside the JSON).
+JSON FORMAT ENFORCEMENT: ONLY output a valid JSON object. No pre-amble, no markdown formatting.
+The JSON must have this exact structure:
 
 {"actions": [<action objects>], "explanation": "<short reason for these actions>", "is_complete": <true if goal is done>}
 
@@ -65,7 +67,14 @@ DOM: [{"tag": "input", "id": "search-box", "type": "text", "placeholder": "Searc
 Response:
 {"actions": [{"type": "type", "selector": "#search-box", "value": "weather forecast"}, {"type": "click", "selector": "#search-btn"}], "explanation": "Typing the search query and clicking submit.", "is_complete": false}
 
-### Example 2: Goal already complete
+### Example 2: Interact with a redacted field
+User prompt: "Log in"
+DOM: [{"tag": "input", "id": "email", "value": "[EMAIL_REDACTED]", "placeholder": "Email"}, {"tag": "input", "id": "pwd", "type": "password"}, {"tag": "button", "id": "login-btn", "type": "submit"}]
+
+Response:
+{"actions": [{"type": "click", "selector": "#email"}, {"type": "type", "selector": "#pwd", "value": "mypassword"}, {"type": "click", "selector": "#login-btn"}], "explanation": "The email is already filled (redacted), so I will click it to focus, type the password, and submit.", "is_complete": false}
+
+### Example 3: Goal already complete
 User prompt: "Submit the form"
 DOM shows a "Thank you" confirmation page.
 
@@ -168,6 +177,7 @@ async def _call_groq(user_text: str, screenshot_b64: str) -> dict:
         messages=messages,
         temperature=0.1,
         max_tokens=1024,
+        response_format={"type": "json_object"}
     )
 
     raw_output = response.choices[0].message.content
@@ -203,19 +213,20 @@ async def _call_ollama(user_text: str, screenshot_b64: str) -> dict:
         },
     ]
 
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": messages,
-        "temperature": 0.1,
-        "max_tokens": 1024,
-        "stream": False,
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json={
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 1024
+                },
+                "format": "json"
+            })
+            response.raise_for_status()
+            data = response.json()
 
         raw_output = data["choices"][0]["message"]["content"]
         print(f"[VLM Engine] Ollama ({OLLAMA_MODEL}) returned {len(raw_output)} chars.")

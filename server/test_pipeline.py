@@ -1,12 +1,12 @@
 import json
 import base64
 from fastapi.testclient import TestClient
-from main import app
+from server.main import app
 
 client = TestClient(app)
 
-# Create a simple 1x1 transparent GIF encoded in base64 to simulate a screenshot
-dummy_image_b64 = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+# Dummy 32x32 white JPEG
+dummy_image_b64 = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAAgACAQAwEAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8A0//Z"
 
 request_payload = {
     "user_prompt": "Click the login button",
@@ -19,7 +19,10 @@ request_payload = {
                 "text": "Login"
             }
         ]
-    }
+    },
+    "page_url": "https://example.com/login",
+    "page_title": "Login Page",
+    "viewport": {"width": 1280, "height": 720}
 }
 
 print("Testing /api/health...")
