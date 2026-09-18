@@ -50,9 +50,20 @@ function notifyStatus(step) {
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('No active tab found.');
-  if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+  
+  const url = tab.url || '';
+  if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:')) {
     throw new Error('Cannot run on browser internal pages.');
   }
+  
+  if (url.endsWith('.pdf')) {
+    throw new Error('Cannot run on PDF documents.');
+  }
+  
+  if (url.startsWith('file://')) {
+    throw new Error('Cannot run on local file:// pages unless specifically enabled in extension settings.');
+  }
+  
   return tab;
 }
 
