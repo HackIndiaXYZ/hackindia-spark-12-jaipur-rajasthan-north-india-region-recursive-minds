@@ -42,10 +42,10 @@ export async function redactScreenshot(canvas, screenshotDataUrl, detections) {
 
       // 12% safety margin around the detected area
       const padding = 0.12; 
-      const px = bbox.x - (bbox.w * padding / 2);
-      const py = bbox.y - (bbox.h * padding / 2);
-      const pw = bbox.w * (1 + padding);
-      const ph = bbox.h * (1 + padding);
+      const px = bbox.x - (bbox.width * padding / 2);
+      const py = bbox.y - (bbox.height * padding / 2);
+      const pw = bbox.width * (1 + padding);
+      const ph = bbox.height * (1 + padding);
 
       if (type === 'FACE') {
         // Blur effect for faces
