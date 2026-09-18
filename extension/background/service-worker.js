@@ -134,7 +134,7 @@ async function runPIIDetection(screenshotDataUrl, domSnapshot) {
 // ──────────────────────────────────────────────
 // Step 4: Run Redaction (via offscreen document canvas)
 // ──────────────────────────────────────────────
-async function runRedaction(screenshotDataUrl, detections) {
+async function runRedaction(screenshotDataUrl, domSnapshot, detections) {
   await ensureOffscreenDocument();
 
   const response = await chrome.runtime.sendMessage({
@@ -142,6 +142,7 @@ async function runRedaction(screenshotDataUrl, detections) {
     target: 'offscreen',
     payload: {
       screenshot: screenshotDataUrl,
+      domSnapshot,
       detections,
     },
   });
@@ -240,6 +241,7 @@ async function runPipeline(userPrompt) {
     t0 = performance.now();
     const { sanitizedScreenshot, sanitizedDOM, manifest } = await runRedaction(
       screenshotDataUrl,
+      domSnapshot,
       detections
     );
     timings.redact = Math.round(performance.now() - t0);

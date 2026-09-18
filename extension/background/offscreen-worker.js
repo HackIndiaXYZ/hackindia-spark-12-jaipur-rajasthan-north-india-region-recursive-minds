@@ -11,6 +11,9 @@
  * will be implemented in Phases 2-3 by the Privacy and Redaction engineers.
  */
 
+import { redactDOM } from '../redaction/dom-redactor.js';
+import { generateManifest } from '../redaction/manifest-generator.js';
+
 // ──────────────────────────────────────────────
 // Canvas Setup
 // ──────────────────────────────────────────────
@@ -58,11 +61,11 @@ async function runMLDetection(screenshotDataUrl, domSnapshot) {
 }
 
 // ──────────────────────────────────────────────
-// Stub: Visual Redaction
+// Stub: Redaction Pipeline
 // Will be fully implemented by Redaction Engineer in Phase 2
 // ──────────────────────────────────────────────
-async function runVisualRedaction(screenshotDataUrl, detections) {
-  console.log('[Offscreen] Running visual redaction (stub)...');
+async function runRedactionPipeline(screenshotDataUrl, domSnapshot, detections) {
+  console.log('[Offscreen] Running redaction pipeline...');
 
   const img = await loadImage(screenshotDataUrl);
   canvas.width = img.width;
@@ -111,27 +114,17 @@ async function runVisualRedaction(screenshotDataUrl, detections) {
   // Export as JPEG (quality 0.80)
   const sanitizedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
 
-  // Build manifest stub
-  const manifest = {
-    redactions: detections.map((d, i) => ({
-      id: `r_${String(i + 1).padStart(3, '0')}`,
-      type: d.type,
-      bbox: d.bbox,
-      confidence: d.confidence || 0.95,
-      method: d.type === 'FACE' ? 'blur' : 'black',
-      detector: d.detector || 'stub',
-    })),
-    tiers_executed: [1],
-    processing_time_ms: 0,
-    total_pii_found: detections.length,
-    summary: detections.reduce((acc, d) => {
-      acc[d.type] = (acc[d.type] || 0) + 1;
-      return acc;
-    }, {}),
-  };
+  // Apply DOM redaction (Phase 3)
+  const t0 = performance.now();
+  const sanitizedDOM = redactDOM(domSnapshot, detections);
+  const processingTimeMs = Math.round(performance.now() - t0);
+
+  // Build manifest (Phase 3)
+  const manifest = generateManifest(detections, processingTimeMs);
 
   return {
     sanitizedScreenshot: sanitizedDataUrl,
+    sanitizedDOM,
     manifest,
   };
 }
@@ -157,7 +150,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Async
 
     case 'RUN_REDACTION':
-      runVisualRedaction(message.payload.screenshot, message.payload.detections)
+      runRedactionPipeline(message.payload.screenshot, message.payload.domSnapshot, message.payload.detections)
         .then((result) => sendResponse(result))
         .catch((e) => sendResponse({ error: e.message }));
       return true; // Async
