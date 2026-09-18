@@ -15,7 +15,7 @@ const REGEX_SUITE = {
   PHONE: {
     // Basic NA/International format, ignores too many spaces
     pattern: /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
-    confidence: 0.85 // Tuned to reduce false positives
+    confidence: 0.70 // Tuned for max recall
   },
   SSN: {
     pattern: /\b\d{3}-\d{2}-\d{4}\b/g,
@@ -27,12 +27,12 @@ const REGEX_SUITE = {
   },
   PAN: {
     pattern: /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/g,
-    confidence: 0.9
+    confidence: 0.80 // Max recall
   },
   CREDIT_CARD: {
     // Catch 13-19 digit sequences, possibly separated by spaces or dashes
     pattern: /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9][0-9])[0-9]{12})\b|\b(?:\d[ -]*?){13,16}\b/g,
-    confidence: 0.95, // Tuned for higher precision
+    confidence: 0.80, // Max recall
     validate: (match) => luhnCheck(match.replace(/[- ]/g, ''))
   },
   IP_ADDRESS: {
@@ -42,7 +42,7 @@ const REGEX_SUITE = {
   DOB: {
     // MM/DD/YYYY or YYYY-MM-DD
     pattern: /\b(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b|\b(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])\b/g,
-    confidence: 0.85 // Tuned to reduce false positives
+    confidence: 0.70 // Max recall
   }
 };
 
