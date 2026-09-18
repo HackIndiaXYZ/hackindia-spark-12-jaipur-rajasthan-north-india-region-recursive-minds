@@ -141,3 +141,27 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ────────────────────────────────
+# Veilex — Project-specific
+# ────────────────────────────────
+
+# ONNX models (downloaded via scripts/download-models.js)
+extension/models/*.onnx
+extension/models/*.bin
+
+# Vendored libraries (downloaded separately)
+extension/lib/ort*.js
+extension/lib/ort*.wasm
+extension/lib/browser-polyfill.js
+
+# Server
+server/.env
+server/__pycache__/
+server/*.pyc
+server/venv/
+server/.venv/
+
+# OS files
+.DS_Store
+Thumbs.db

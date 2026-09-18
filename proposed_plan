@@ -1,0 +1,882 @@
+# Veilex — Privacy-Preserving Browser Vision Agent
+
+## Product Requirements Document + Implementation Plan
+
+**Team:** Recursive Minds | **Hackathon:** HackIndia Spark 12  
+**Version:** 2.0 (Merged) | **Last Updated:** 2026-09-18
+
+---
+
+# PART 1 — PRODUCT REQUIREMENTS DOCUMENT (PRD)
+
+---
+
+## 1.1 Problem Statement
+
+AI agents are becoming omnipresent but most agentic pipelines are deployed server-side, requiring users to share raw screen data — including sensitive PII — with remote servers. This creates a fundamental privacy conflict: users want intelligent assistance, but don't want their passwords, faces, financial data, and personal information leaving their device.
+
+Modern browser APIs (WebGPU, WebAssembly) and local inference libraries (ONNX Runtime Web, Transformers.js) have unlocked the ability to run lightweight ML models directly in the browser. We can now build a **client-side privacy firewall** that bridges local privacy enforcement with cloud-based AI reasoning.
+
+## 1.2 Product Vision
+
+**Veilex** is a browser extension that acts as a **local privacy firewall** between the user's screen and a remote AI reasoning server. It captures the user's screen state, automatically detects and redacts all sensitive/PII data locally, sends only the sanitized visual context to a server-side VLM, and executes the returned actions on the browser DOM.
+
+> **The local component is NOT an AI assistant — it is a privacy firewall.**  
+> **The server component IS the AI assistant — but it never sees raw PII.**
+
+## 1.3 Target Users
+
+| User | Pain Point | How Veilex Helps |
+|---|---|---|
+| **Privacy-conscious users** | Don't trust cloud AI with their screens | All PII redacted before any data leaves the device |
+| **Enterprise employees** | Company policy forbids sending data to external AI | Extension enforces data sanitization at the browser level |
+| **Accessibility users** | Need AI help navigating complex workflows | VLM reasons about page structure and executes actions |
+| **Non-technical users** | Struggle with complex multi-step web tasks | Natural language commands → automated browser actions |
+
+## 1.4 Core User Flow
+
+```
+User visits a webpage
+        │
+        ▼
+User presses Ctrl+Shift+V or clicks extension icon
+        │
+        ▼
+User types: "Help me fill out this form"
+        │
+        ▼
+Extension AUTOMATICALLY (no user action needed):
+  ├── Captures screenshot + DOM
+  ├── Detects all PII (faces, emails, passwords, cards, etc.)
+  ├── Redacts PII on screenshot (blur/mask/black)
+  ├── Replaces PII in DOM with [TYPE_REDACTED] tokens
+  └── Shows privacy summary: "Redacted: 2 faces, 3 emails, 1 password"
+        │
+        ▼
+ONLY sanitized data sent to server (HTTPS)
+        │
+        ▼
+Server VLM reasons about page + returns actions
+        │
+        ▼
+Extension executes actions (click, type, scroll)
+        │
+        ▼
+Loop: re-capture → re-redact → next action
+```
+
+## 1.5 Functional Requirements
+
+### FR-1: Screen Capture
+- **FR-1.1**: Capture the visible browser tab as a screenshot (PNG → JPEG)
+- **FR-1.2**: Extract a structured DOM snapshot (all interactive elements with types, labels, positions)
+- **FR-1.3**: Support configurable capture resolution (default 1280×720, adaptive to hardware)
+- **FR-1.4**: Rate-limit captures to max 1 per 2 seconds
+
+### FR-2: PII Detection (Client-Side)
+- **FR-2.1**: Detect form-field PII via DOM attributes (`type=password`, `autocomplete=cc-number`, etc.)
+- **FR-2.2**: Detect text PII via regex (email, phone, SSN, credit card, Aadhaar, PAN, IP, DOB)
+- **FR-2.3**: Detect faces via BlazeFace ML model (~400KB)
+- **FR-2.4**: Detect text in images via Tesseract.js OCR (on-demand, lazy-loaded)
+- **FR-2.5**: Classify sensitive document types (ID cards, medical forms) via MobileNet-v2
+- **FR-2.6**: Adapt detection depth to hardware capability (3-tier system)
+
+### FR-3: Redaction (Client-Side)
+- **FR-3.1**: Apply visual redaction on screenshot canvas (blur faces, black-out text PII, pixelate documents)
+- **FR-3.2**: Apply 10-15% safety margin padding around detected regions
+- **FR-3.3**: Replace PII text in DOM snapshot with typed `[TYPE_REDACTED]` tokens
+- **FR-3.4**: Generate a redaction manifest (what was redacted, where, by which detector, with what confidence)
+- **FR-3.5**: All redaction must complete BEFORE any network request
+
+### FR-4: Server Communication
+- **FR-4.1**: Transmit sanitized context (redacted screenshot + clean DOM + manifest) via HTTPS POST
+- **FR-4.2**: Compress payload via gzip (`CompressionStream` API)
+- **FR-4.3**: Target payload size < 500KB per request
+- **FR-4.4**: Timeout at 30 seconds with 2 retries and exponential backoff
+
+### FR-5: Server-Side Reasoning
+- **FR-5.1**: Receive sanitized context and construct multimodal VLM prompt
+- **FR-5.2**: System prompt makes VLM aware of redaction scheme (never guess redacted content)
+- **FR-5.3**: Return structured action commands (click, type, scroll, select, navigate, wait, read)
+- **FR-5.4**: Include human-readable explanation of reasoning
+
+### FR-6: Action Execution (Client-Side)
+- **FR-6.1**: Validate server responses against strict action schema whitelist
+- **FR-6.2**: Block dangerous actions (no `eval()`, no script injection, no untrusted navigations)
+- **FR-6.3**: Execute actions with visual overlay feedback (user sees what's happening)
+- **FR-6.4**: Support multi-step flows (execute → re-capture → next action loop)
+- **FR-6.5**: Rate limit: max 10 actions per response, max 1 action per 500ms
+
+### FR-7: User Interface
+- **FR-7.1**: Popup with text prompt input and "Go" button
+- **FR-7.2**: Pipeline status indicator (Capturing → Detecting → Redacting → Sending → Executing)
+- **FR-7.3**: Privacy log showing redaction summary per session
+- **FR-7.4**: Latency/metrics display (timing breakdown per stage)
+- **FR-7.5**: Settings: sensitivity level, server URL, hardware tier display
+- **FR-7.6**: Keyboard shortcut: Ctrl+Shift+V to activate
+
+## 1.6 Non-Functional Requirements
+
+| ID | Requirement | Target |
+|---|---|---|
+| **NFR-1** | Raw PII must NEVER leave the device | Zero PII in network traffic |
+| **NFR-2** | Must work without local LLM/GPU | CPU/WASM fallback mandatory |
+| **NFR-3** | Total bundled model size | < 10MB |
+| **NFR-4** | Main thread must never block | All ML in Web Workers / OffscreenDocument |
+| **NFR-5** | End-to-end latency (prompt → action) | < 5 seconds |
+| **NFR-6** | Memory usage during inference | < 200MB additional |
+| **NFR-7** | Works on Chrome 120+ and Firefox 115+ | Cross-browser |
+| **NFR-8** | Privacy filtering must be automatic | No manual "sanitize" button |
+
+## 1.7 Evaluation Metrics Alignment
+
+| Metric | Weight | Our Strategy | Target |
+|---|---|---|---|
+| **Visual context accuracy** | 25% | Full DOM snapshot + redacted screenshot preserves page structure. `[TYPE_REDACTED]` tokens keep semantic meaning. Server VLM can still reason about layout. | > 85% task completion on test scenarios |
+| **PII detection recall/precision** | 20% | 3-tier hybrid: DOM attributes (high precision), regex (high recall), vision models (faces/documents). Union of all detectors maximizes recall. | Recall > 95%, Precision > 90% |
+| **Redaction precision** | 20% | Tight bounding boxes with 10-15% safety margin. Type-specific redaction (blur, black, mosaic). Tokens preserve semantics. | Zero PII leakage in output |
+| **Client resource utilization** | 20% | Adaptive 3-tier system. Low-end: DOM+regex only (0 ML cost). Models < 10MB. Inference in workers. | < 200MB RAM, < 50% CPU spike |
+| **E2E latency** | 15% | Tier 1 < 50ms, Tier 2 < 200ms, capture < 100ms, network < 1s, server < 3s | < 5s total pipeline |
+
+## 1.8 Technology Stack
+
+| Component | Technology | Size/Cost |
+|---|---|---|
+| Extension framework | Chrome Manifest V3 + Firefox `browser-polyfill` | — |
+| DOM PII detection | Pure JavaScript (rules + regex) | 0 MB, 0 ML |
+| Face detection | BlazeFace via ONNX Runtime Web | ~400KB |
+| Image classification | MobileNet-v2 INT8 via ONNX Runtime Web | ~5MB |
+| OCR (on-demand) | Tesseract.js (WASM) | ~2MB (lazy-loaded) |
+| ML runtime | ONNX Runtime Web (WASM + WebGPU) | ~2MB |
+| Screenshot redaction | HTML Canvas API | Built-in |
+| Server framework | Python FastAPI + Uvicorn | — |
+| Server VLM (primary) | **Groq API** (free tier, fast) | Free |
+| Server VLM (fallback) | Qwen2-VL-7B via Ollama (local) or Gemini API | Variable |
+| Action format | Structured JSON with whitelist validation | — |
+
+## 1.9 Out of Scope (v1)
+
+- Real-time video/screen recording redaction (we do per-frame snapshots)
+- Custom user-trained PII models
+- Mobile browser support
+- Extension marketplace publishing
+- End-to-end encryption of the sanitized payload (HTTPS is sufficient)
+
+---
+
+# PART 2 — IMPLEMENTATION PLAN
+
+---
+
+## 2.1 Seven Fundamental Constraints
+
+| # | Constraint | Impact on Design |
+|---|---|---|
+| 1 | User must NOT install a local LLM | No Ollama/Llama/Qwen on client. Only tiny ML models bundled with extension |
+| 2 | Must work on weak hardware | No NVIDIA GPU assumption. CPU/WASM fallback mandatory |
+| 3 | Only lightweight AI runs locally | BlazeFace (~400KB), MobileNet (~5MB), regex, DOM rules |
+| 4 | Raw PII must NEVER leave the device | Redaction happens BEFORE any network call |
+| 5 | Privacy filtering must be automatic | No "Sanitize" button. Transparent to user |
+| 6 | Server reasons ONLY on sanitized context | Server understands `[REDACTED]` tokens |
+| 7 | Balance accuracy + resources + latency | Adaptive 3-tier processing based on hardware |
+
+---
+
+## 2.2 High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "CLIENT — Browser Extension"
+        A["Screen Capture<br/>(Tab Screenshot + DOM)"] --> B["Tier 1: DOM + Regex<br/>(Zero ML cost)"]
+        B --> C["Tier 2: BlazeFace + OCR<br/>(Lightweight ML)"]
+        C --> D["Tier 3: MobileViT<br/>(If hardware allows)"]
+        D --> E["Redaction Engine<br/>(Blur/Mask/Replace)"]
+        E --> F["Sanitized Context<br/>Package"]
+        F -->|"HTTPS (gzip)"| G["Server"]
+        G -->|"Action JSON"| H["Action Validator"]
+        H --> I["DOM Action Executor"]
+    end
+    
+    subgraph "SERVER — Reasoning Engine"
+        G --> J["Context Receiver<br/>(FastAPI)"]
+        J --> K["VLM Reasoning<br/>(Groq API: Qwen2.5-VL)"]
+        K --> L["Action Command<br/>Generator"]
+        L --> G
+    end
+    
+    style E fill:#ff6b6b,stroke:#c92a2a,color:#fff
+    style F fill:#51cf66,stroke:#2b8a3e,color:#fff
+```
+
+---
+
+## 2.3 Data Flow — The Privacy Pipeline
+
+```
+RAW SCREEN (Screenshot + DOM)
+    │
+    ▼
+┌──────────────────────────────────────────────┐
+│  TIER 1 — DOM + Regex  (always runs, 0ms ML) │
+│  • <input type="password/email/tel">          │
+│  • autocomplete="cc-number/ssn/name"          │
+│  • Regex: emails, phones, SSNs, card numbers  │
+│  • Regex: Aadhaar, PAN, IP, DOB, addresses    │
+│  • Label text: "Password", "CVV", etc.        │
+│  Output: List of DOM-detected PII regions     │
+└──────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────┐
+│  TIER 2 — Lightweight Vision  (<5MB models)   │
+│  • BlazeFace → face bounding boxes (~400KB)   │
+│  • Canvas text extraction + regex on pixels   │
+│  • Tesseract.js WASM (on-demand for images)   │
+│  Output: Visually-detected PII regions        │
+└──────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────┐
+│  TIER 3 — Enhanced (capable hardware only)    │
+│  • MobileNet-v2 INT8 for scene classification │
+│  • Sensitive document/ID card detection        │
+│  • WebGPU if available, WASM fallback          │
+│  Output: Content-type classification           │
+└──────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────┐
+│  REDACTION ENGINE                              │
+│  • Merge all detected PII regions              │
+│  • Apply redaction on screenshot (canvas)      │
+│  • 10-15% safety margin on all bounding boxes  │
+│  • Replace DOM text with [TYPE_REDACTED] tokens│
+│  • Generate redaction manifest (JSON)          │
+│  • Export as JPEG quality 0.80                 │
+│  Output: Sanitized screenshot + DOM + manifest │
+└──────────────────────────────────────────────┘
+    │
+    ▼
+    SAFE TO TRANSMIT TO SERVER
+```
+
+---
+
+## 2.4 Proposed Changes — File by File
+
+### Component 1: Extension Manifest & Scaffolding
+
+#### [NEW] `extension/manifest.json`
+- Manifest V3 for Chrome
+- Permissions: `activeTab`, `scripting`, `storage`, `offscreen`
+- `content_scripts` injected on all pages for DOM analysis
+- `background` service worker for orchestration
+- `web_accessible_resources` for bundled ML models and WASM binaries
+- CSP configured to allow WASM execution
+- `commands` section with keyboard shortcut `Ctrl+Shift+V` to activate agent
+
+#### [NEW] `extension/manifest-firefox.json`
+- Firefox-compatible manifest (Manifest V2 with `browser_specific_settings`)
+- Uses `browser-polyfill.js` for API compatibility
+
+---
+
+### Component 2: Popup UI — Dashboard & Controls
+
+#### [NEW] `extension/popup/popup.html`
+Layout:
+- Text prompt input + "Go" button
+- Status indicator bar (Capturing → Detecting → Redacting → Sending → Executing)
+- Privacy log panel: "Redacted: 2 faces, 3 emails, 1 password"
+- Metrics panel: timing breakdown per stage + total latency
+- Settings gear icon: sensitivity level (Conservative / Balanced / Minimal), server URL
+- Hardware tier auto-detected and displayed as badge
+
+#### [NEW] `extension/popup/popup.css`
+- Dark-themed with glassmorphic card panels
+- Status colors: blue (capturing), yellow (detecting), red (redacting), green (sending), purple (executing)
+- Micro-animations for status transitions
+- Compact layout (~400px × 500px popup)
+
+#### [NEW] `extension/popup/popup.js`
+- Message passing with service worker via `chrome.runtime.sendMessage`
+- Real-time status updates via `chrome.runtime.onMessage`
+- Privacy log persistence via `chrome.storage.session`
+- Metrics display with per-stage timing bars
+- Settings read/write to `chrome.storage.local`
+
+---
+
+### Component 3: Screen Capture Layer
+
+#### [NEW] `extension/capture/screen-capture.js`
+- Uses `chrome.tabs.captureVisibleTab()` to capture visible tab as PNG data URL
+- Configurable capture resolution (default: 1280×720 to limit data size)
+- Downscale on weak hardware (auto-detected via `navigator.hardwareConcurrency` and `navigator.deviceMemory`)
+- Rate limiting: max 1 capture per 2 seconds to prevent resource exhaustion
+- Returns: data URL string
+
+#### [NEW] `extension/capture/dom-extractor.js`
+- **Content script** that extracts a structured DOM snapshot:
+  ```json
+  {
+    "url": "https://example.com/form",
+    "title": "Sign Up",
+    "elements": [
+      {
+        "tag": "input",
+        "type": "password",
+        "id": "passwd",
+        "name": "password",
+        "label": "Password",
+        "autocomplete": "current-password",
+        "placeholder": "Enter password",
+        "bbox": {"x": 100, "y": 200, "w": 300, "h": 40},
+        "visible": true,
+        "value_length": 12
+      }
+    ],
+    "landmarks": ["nav", "main", "header", "footer"],
+    "visible_text_blocks": [
+      {"text": "John Doe — john@email.com", "bbox": {"x": 50, "y": 100, "w": 400, "h": 20}}
+    ]
+  }
+  ```
+- Extracts: all `<input>`, `<textarea>`, `<select>` elements with types, labels, autocomplete hints, aria-labels
+- Computes bounding boxes via `getBoundingClientRect()`
+- Extracts visible text blocks with positions (for cross-referencing with vision)
+- **NEVER** extracts actual password values — only metadata (type, length)
+- Strips URL path parameters / query strings to prevent session token leakage (sends domain only)
+
+---
+
+### Component 4: PII Detection — Tier 1 (DOM + Regex, Zero ML Cost)
+
+> **Always runs. Zero ML overhead. Catches ~60-70% of PII.**
+
+#### [NEW] `extension/privacy/pii-types.js`
+- Enum of all PII types with redaction tokens and visual/text classification:
+  ```js
+  const PII_TYPES = {
+    FACE:        { token: '[FACE_REDACTED]',    visual: true,  method: 'blur' },
+    EMAIL:       { token: '[EMAIL_REDACTED]',   visual: false, method: 'replace' },
+    PHONE:       { token: '[PHONE_REDACTED]',   visual: false, method: 'replace' },
+    PASSWORD:    { token: '[PASSWORD_REDACTED]', visual: false, method: 'black' },
+    CREDIT_CARD: { token: '[CARD_REDACTED]',    visual: false, method: 'black' },
+    SSN:         { token: '[SSN_REDACTED]',     visual: false, method: 'black' },
+    AADHAAR:     { token: '[AADHAAR_REDACTED]', visual: false, method: 'black' },
+    PAN:         { token: '[PAN_REDACTED]',     visual: false, method: 'black' },
+    NAME:        { token: '[NAME_REDACTED]',    visual: false, method: 'replace' },
+    ADDRESS:     { token: '[ADDRESS_REDACTED]', visual: false, method: 'replace' },
+    DOB:         { token: '[DOB_REDACTED]',     visual: false, method: 'replace' },
+    IP_ADDRESS:  { token: '[IP_REDACTED]',      visual: false, method: 'replace' },
+    DOCUMENT:    { token: '[DOCUMENT_REDACTED]', visual: true,  method: 'mosaic' },
+    GENERIC_PII: { token: '[PII_REDACTED]',     visual: false, method: 'replace' },
+  };
+  ```
+
+#### [NEW] `extension/privacy/dom-detector.js`
+- Input field analysis — detects sensitive fields by:
+  - `type` attribute: `password`, `email`, `tel`, `number` (near card labels)
+  - `autocomplete` attribute: `cc-number`, `cc-exp`, `cc-csc`, `name`, `given-name`, `family-name`, `bday`, `ssn`, `address-line1`, etc.
+  - `name`/`id`/`placeholder` pattern matching: `/pass|pwd|ssn|cvv|card|account|aadhaar|pan/i`
+  - Associated `<label>` text analysis
+- Output: Array of `{ element, piiType, confidence, bbox }` objects
+
+#### [NEW] `extension/privacy/regex-detector.js`
+- Scans all visible text content (from DOM extractor) for PII patterns:
+  - **Email**: `/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g`
+  - **Phone (intl)**: `/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g`
+  - **SSN**: `/\b\d{3}-\d{2}-\d{4}\b/g`
+  - **Credit Card** (Luhn-validated): `/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g`
+  - **Aadhaar** (India): `/\b\d{4}\s?\d{4}\s?\d{4}\b/g`
+  - **PAN** (India): `/\b[A-Z]{5}\d{4}[A-Z]\b/g`
+  - **IP Address**: `/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g`
+  - **Date of Birth**: `/\b(0[1-9]|[12]\d|3[01])[\/\-](0[1-9]|1[0-2])[\/\-](19|20)\d{2}\b/g`
+  - **Address patterns**: heuristic (street number + name + type keywords)
+- Each match includes the text range and bounding box (from DOM position data)
+- Output: Array of `{ text, piiType, confidence, bbox, sourceElement }` objects
+
+---
+
+### Component 5: PII Detection — Tier 2 (Lightweight Vision, <5MB)
+
+> **Runs on mid+ hardware. Catches visual PII that DOM/regex miss.**
+
+#### [NEW] `extension/privacy/face-detector.js`
+- Uses **MediaPipe BlazeFace** (~400KB ONNX model) via ONNX Runtime Web
+- Backend selection: WebGPU → WebGL → WASM (automatic fallback)
+- Input: captured screenshot (downscaled to 320×240 for detection)
+- Output: Array of face bounding boxes with confidence scores
+- Runs in **OffscreenDocument** (Chrome) or Web Worker to avoid blocking UI
+- Inference time target: <100ms on WASM, <30ms on WebGPU
+
+#### [NEW] `extension/privacy/ocr-detector.js`
+- Uses **Tesseract.js** (WASM) for OCR on image-heavy regions
+- **Triggered only when**:
+  - Page contains `<canvas>`, `<img>`, or `<svg>` elements with significant area
+  - DOM text coverage is low (suggesting text is rendered as images)
+- Extracts text from image regions → feeds through regex-detector for PII matching
+- Lazy-loaded: Tesseract worker initialized only when needed (~2MB download)
+- Caches worker in `IndexedDB` for subsequent uses
+
+---
+
+### Component 6: PII Detection — Tier 3 (Enhanced, High-end Hardware)
+
+> **Runs only on high-tier hardware. Catches document-level sensitivity.**
+
+#### [NEW] `extension/privacy/vision-model.js`
+- Loads a **quantized MobileNet-v2** or **EfficientNet-B0** (~5MB INT8 ONNX) for content classification
+- Classifies image regions as: `document`, `id-card`, `medical-form`, `receipt`, `generic`
+- If classified as sensitive document type → entire region is redacted with mosaic
+- Uses ONNX Runtime Web with automatic backend selection (WebGPU → WASM)
+
+---
+
+### Component 7: Hardware Capability Detection & Adaptive Processing
+
+#### [NEW] `extension/core/hardware-profiler.js`
+- Runs once on extension install, re-runs periodically
+- Detects:
+  ```js
+  {
+    cores: navigator.hardwareConcurrency,        // CPU cores
+    memory: navigator.deviceMemory,              // RAM in GB
+    webgpu: !!navigator.gpu,                     // WebGPU support
+    webgl: !!canvas.getContext('webgl2'),         // WebGL2 support  
+    gpu_vendor: getGPUInfo(),                     // GPU info via WebGL
+    battery: navigator.getBattery(),              // Battery status
+  }
+  ```
+- Assigns a **hardware tier**:
+  
+  | Tier | Criteria | Processing | Models Loaded |
+  |------|----------|------------|---------------|
+  | **High** | ≥8 cores, ≥8GB RAM, WebGPU | All 3 tiers, full resolution | BlazeFace + MobileNet + OCR |
+  | **Mid** | ≥4 cores, ≥4GB RAM, WebGL | Tier 1 + Tier 2, medium resolution | BlazeFace + OCR (lazy) |
+  | **Low** | <4 cores or <4GB RAM | Tier 1 only (DOM+regex), low resolution | None |
+
+- Stores tier in `chrome.storage.local` for quick access
+- User can override tier in settings
+
+---
+
+### Component 8: Redaction Engine
+
+> **The critical output layer. Produces the sanitized context that is safe to transmit.**
+
+#### [NEW] `extension/redaction/visual-redactor.js`
+- Takes the raw screenshot (as Canvas/ImageBitmap) + all detected PII regions
+- For each PII region with a bounding box:
+  - **Faces**: Gaussian blur (`ctx.filter = 'blur(20px)'`) + overlay label `[FACE]`
+  - **Passwords/Cards/SSN/Aadhaar/PAN**: Solid black rectangle + overlay with redaction token text
+  - **Documents/ID cards**: Heavy pixelation (mosaic) + overlay label `[DOCUMENT]`
+  - **Text PII (email, phone, DOB)**: Black rectangle precisely covering the text bbox
+- Applies a **safety margin** of 10-15% padding around each bbox to prevent partial leakage
+- Outputs: redacted screenshot as JPEG (**quality 0.80** — balances bandwidth vs VLM readability)
+- All operations use HTML Canvas API — no external dependency
+
+#### [NEW] `extension/redaction/dom-redactor.js`
+- Takes the DOM snapshot + all detected PII regions
+- For each text-based PII:
+  - Replaces actual text with the corresponding redaction token
+  - Example: `"john.doe@gmail.com"` → `"[EMAIL_REDACTED]"`
+  - Example: `"4532-1234-5678-9012"` → `"[CARD_REDACTED]"`
+  - Example: `"ABCDE1234F"` → `"[PAN_REDACTED]"`
+- For each input field PII:
+  - Replaces value with token, preserves field metadata
+  - Example: `{ type: "password", value: "[PASSWORD_REDACTED]", label: "Password" }`
+- Preserves full DOM structure for server to understand page layout
+- Outputs: sanitized DOM snapshot JSON
+
+#### [NEW] `extension/redaction/manifest-generator.js`
+- Generates a **redaction manifest** — a structured record of what was redacted:
+  ```json
+  {
+    "redactions": [
+      {
+        "id": "r_001",
+        "type": "FACE",
+        "bbox": {"x": 450, "y": 120, "w": 80, "h": 100},
+        "confidence": 0.94,
+        "method": "blur",
+        "detector": "blazeface",
+        "tier": 2
+      },
+      {
+        "id": "r_002",
+        "type": "EMAIL",
+        "original_length": 22,
+        "bbox": {"x": 200, "y": 350, "w": 180, "h": 16},
+        "confidence": 0.99,
+        "method": "replace",
+        "detector": "regex",
+        "tier": 1
+      }
+    ],
+    "hardware_tier": "mid",
+    "tiers_executed": [1, 2],
+    "processing_time_ms": 287,
+    "total_pii_found": 5,
+    "summary": {
+      "FACE": 1,
+      "EMAIL": 2,
+      "PASSWORD": 1,
+      "PHONE": 1
+    }
+  }
+  ```
+- This manifest allows the server to understand the gaps and enables the privacy log in the popup
+
+---
+
+### Component 9: Context Packaging & Transmission
+
+#### [NEW] `extension/network/context-packager.js`
+- Assembles the **sanitized context package**:
+  ```json
+  {
+    "screenshot_b64": "<redacted screenshot as base64 JPEG>",
+    "dom_snapshot": { "sanitized DOM structure" },
+    "redaction_manifest": { "what was redacted" },
+    "user_prompt": "Fill out this form with my saved profile",
+    "page_url": "https://example.com",
+    "page_title": "Sign Up — Example",
+    "viewport": { "width": 1280, "height": 720 },
+    "timestamp": "2026-09-18T15:00:00Z"
+  }
+  ```
+- Compresses payload using gzip (via `CompressionStream` API)
+- Target payload size: <500KB per request
+
+#### [NEW] `extension/network/api-client.js`
+- HTTPS POST to server endpoint
+- Configurable server URL (default: `http://localhost:8000` for dev)
+- Timeout: 30 seconds
+- Retry logic: 2 retries with exponential backoff
+- Validates response schema before passing to action executor
+
+---
+
+### Component 10: Action Validation & Execution
+
+#### [NEW] `extension/actions/action-validator.js`
+- Validates server responses against a strict **action schema**:
+  ```json
+  {
+    "actions": [
+      {
+        "type": "click | type | scroll | select | navigate | wait | read | highlight",
+        "selector": "CSS selector",
+        "value": "text to type (for 'type' action)",
+        "direction": "up | down (for 'scroll' action)",
+        "amount": 500
+      }
+    ],
+    "explanation": "I'm clicking the submit button to complete the form"
+  }
+  ```
+- **Whitelist of allowed action types**: `click`, `type`, `scroll`, `select`, `navigate`, `wait`, `read`, `highlight`
+- **Blocked actions**: No `eval()`, no script injection, no `window.open` to untrusted URLs
+- **Selector validation**: Must match existing DOM elements
+- **Rate limiting**: Max 10 actions per response, max 1 action per 500ms
+
+#### [NEW] `extension/actions/action-executor.js`
+- Content script that receives validated actions and executes them:
+  - `click`: `element.click()` with visual highlight before clicking
+  - `type`: Simulates keyboard input character by character (realistic event dispatch)
+  - `scroll`: `window.scrollBy()` with smooth behavior
+  - `select`: Sets `<select>` element value and dispatches `change` event
+  - `navigate`: `window.location.href = url` (only whitelisted domains)
+  - `wait`: `setTimeout` with max 10 seconds
+  - `read`: Re-captures screen state for multi-step flows
+  - `highlight`: Draws a glowing border around the target element for user visibility
+- Shows a **visual overlay** of what action is being performed (for user transparency)
+- Supports **multi-step flows**: after executing, re-captures screen for next instruction
+- Reports success/failure back to service worker
+
+---
+
+### Component 11: Background Orchestration
+
+#### [NEW] `extension/background/service-worker.js`
+- The **central orchestrator** that ties everything together
+- Flow:
+  1. User types prompt in popup OR presses `Ctrl+Shift+V` → prompt modal appears
+  2. Captures screenshot via `chrome.tabs.captureVisibleTab()`
+  3. Sends message to content script for DOM extraction
+  4. Runs Tier 1 PII detection (DOM + regex) on DOM snapshot
+  5. If hardware tier ≥ mid: creates OffscreenDocument, runs Tier 2 (face detection, OCR)
+  6. If hardware tier = high: runs Tier 3 (MobileNet classification) in OffscreenDocument
+  7. Passes all detections to redaction engine
+  8. Packages sanitized context and sends to server via api-client
+  9. Receives action commands, validates via action-validator, forwards to content script
+  10. If action is `read`: loops back to step 2 for multi-step flows
+  11. Updates popup with privacy log + metrics at each stage
+- All processing is **automatic** — user only provides the initial prompt
+- Badge text shows pipeline state icon
+
+#### [NEW] `extension/background/offscreen-worker.html` + `offscreen-worker.js`
+- Chrome OffscreenDocument for running ML inference without blocking the UI
+- Loads ONNX Runtime Web + models
+- Houses the `<canvas>` for visual redaction
+- Communicates with service worker via `chrome.runtime.sendMessage`
+
+---
+
+### Component 12: Server — FastAPI Backend
+
+#### [NEW] `server/main.py`
+- FastAPI application with CORS configured for extension origin
+- Endpoint: `POST /api/analyze`
+  - Receives sanitized context package
+  - Validates with Pydantic models
+  - Passes to VLM engine for reasoning
+  - Returns action commands
+- Endpoint: `GET /api/health`
+  - Health check for extension connectivity test
+
+#### [NEW] `server/vlm_engine.py`
+- VLM integration layer with fallback chain:
+  1. **Primary: Groq API** — free tier, fast (~1s inference), hosts vision models
+  2. **Fallback 1: Ollama** — local `qwen2.5-vl:7b` or `llava:13b` (if GPU available)
+  3. **Fallback 2: OpenAI / Gemini API** — paid, reliable
+- System prompt instructs the VLM about the redaction scheme:
+  ```
+  You are a browser automation agent. You receive sanitized screenshots where
+  sensitive data has been redacted. Labels like [FACE_REDACTED], [EMAIL_REDACTED],
+  [CARD_REDACTED] indicate intentionally redacted regions. You MUST NOT attempt
+  to guess or reconstruct redacted content.
+
+  You also receive a DOM structure describing interactive elements and a
+  redaction manifest listing what was obscured.
+
+  Reason about the page structure, visible UI elements, and the user's intent
+  to generate the next action. Output a JSON array of actions.
+
+  Allowed action types: click, type, scroll, select, navigate, wait, read, highlight
+  Each action must include: type, selector (CSS), and optionally value/direction/amount.
+  Include an "explanation" field describing your reasoning.
+  ```
+- Constructs multimodal prompt: redacted screenshot + DOM context + user intent
+- Parses VLM response into structured action JSON
+
+#### [NEW] `server/action_generator.py`
+- Converts VLM natural language response into structured action JSON
+- Uses regex parsing + JSON extraction from markdown code blocks
+- If VLM doesn't output structured JSON, makes a secondary LLM call to structure it
+- Validates action format and selector validity before sending to client
+
+#### [NEW] `server/models.py`
+- Pydantic models for request/response schemas:
+  - `SanitizedContext` — input model (screenshot_b64, dom_snapshot, redaction_manifest, user_prompt)
+  - `ActionCommand` — single action (type, selector, value, direction, amount, reason)
+  - `ActionResponse` — output model (actions list, explanation, confidence)
+  - `RedactionManifest` — redaction metadata
+
+#### [NEW] `server/requirements.txt`
+```
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+groq>=0.11.0
+Pillow>=10.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+```
+
+#### [NEW] `server/.env.example`
+```env
+GROQ_API_KEY=your_groq_api_key_here
+VLM_MODEL=qwen-2.5-vl-72b-instruct
+VLM_PROVIDER=groq
+FALLBACK_PROVIDER=ollama
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+CORS_ORIGINS=chrome-extension://*
+```
+
+---
+
+### Component 13: Test & Demo Assets
+
+#### [NEW] `test/demo-page.html`
+- A self-contained HTML page with **known, planted PII** for consistent evaluation:
+  - A registration form with: name input, email input, password input, phone input, credit card input, Aadhaar input
+  - A profile section with a face photo, a displayed email address, a phone number in text
+  - An embedded image containing text (to test OCR detection)
+  - A fake ID card image region
+  - A fake bank statement section with account numbers
+- All PII values are clearly documented so evaluators can verify detection recall
+- Includes a "ground truth" JSON comment with all PII locations and types
+
+#### [NEW] `test/demo-page-clean.html`
+- A page with **zero PII** to test for false positives
+- Contains forms, text, and images that look similar to PII but aren't
+- Used to measure precision
+
+#### [NEW] `docs/demo-scenarios.md`
+- Documents 3 end-to-end demo scenarios with expected behavior:
+  1. **Form filling assistance** — signup form with PII redaction
+  2. **Banking dashboard navigation** — account numbers redacted, agent navigates
+  3. **Social media browsing** — faces blurred, names masked
+
+---
+
+### Component 14: Build & Setup Scripts
+
+#### [NEW] `scripts/download-models.js`
+- Node.js script to fetch ONNX models from HuggingFace Hub:
+  - `blazeface_int8.onnx` (~400KB)
+  - `mobilenet_v2_int8.onnx` (~5MB)
+- Downloads to `extension/models/` directory
+- Validates file integrity via SHA256 checksum
+- Run as: `node scripts/download-models.js`
+
+#### [NEW] `scripts/setup.sh` / `scripts/setup.ps1`
+- One-command project setup:
+  1. `cd server && pip install -r requirements.txt`
+  2. `node scripts/download-models.js`
+  3. `cp server/.env.example server/.env`
+  4. Prints instructions for loading extension in Chrome
+
+---
+
+## 2.5 Complete File Structure
+
+```
+d:\Veilex\
+├── extension/
+│   ├── manifest.json                    ← Chrome Manifest V3
+│   ├── manifest-firefox.json            ← Firefox compatibility
+│   ├── popup/
+│   │   ├── popup.html                   ← Dashboard UI
+│   │   ├── popup.css                    ← Dark theme + glassmorphism
+│   │   └── popup.js                     ← State + message passing
+│   ├── background/
+│   │   ├── service-worker.js            ← Central orchestrator
+│   │   ├── offscreen-worker.html        ← Offscreen doc shell
+│   │   └── offscreen-worker.js          ← ML host + canvas redaction
+│   ├── content/
+│   │   └── content.js                   ← DOM extraction + action execution
+│   ├── capture/
+│   │   ├── screen-capture.js            ← Tab screenshot
+│   │   └── dom-extractor.js             ← Structural DOM snapshot
+│   ├── privacy/
+│   │   ├── pii-types.js                 ← PII enum + redaction tokens
+│   │   ├── dom-detector.js              ← Tier 1: DOM attribute analysis
+│   │   ├── regex-detector.js            ← Tier 1: Text pattern matching
+│   │   ├── face-detector.js             ← Tier 2: BlazeFace inference
+│   │   ├── ocr-detector.js              ← Tier 2: Tesseract.js OCR
+│   │   └── vision-model.js              ← Tier 3: MobileNet classification
+│   ├── redaction/
+│   │   ├── visual-redactor.js           ← Canvas blur/mask/mosaic
+│   │   ├── dom-redactor.js              ← Text → [TOKEN] replacement
+│   │   └── manifest-generator.js        ← Redaction manifest JSON
+│   ├── actions/
+│   │   ├── action-validator.js          ← Schema + security validation
+│   │   └── action-executor.js           ← DOM action runner
+│   ├── network/
+│   │   ├── context-packager.js          ← Payload assembly + gzip
+│   │   └── api-client.js                ← HTTPS client + retry
+│   ├── core/
+│   │   └── hardware-profiler.js         ← 3-tier hardware detection
+│   ├── models/                          ← ONNX models (gitignored)
+│   │   ├── blazeface_int8.onnx
+│   │   └── mobilenet_v2_int8.onnx
+│   ├── lib/                             ← Vendored libraries
+│   │   ├── ort.min.js                   ← ONNX Runtime Web
+│   │   └── browser-polyfill.js          ← Firefox compat
+│   └── icons/
+│       ├── icon16.png
+│       ├── icon48.png
+│       └── icon128.png
+│
+├── server/
+│   ├── main.py                          ← FastAPI app
+│   ├── vlm_engine.py                    ← Groq/Ollama/OpenAI VLM
+│   ├── action_generator.py              ← NL → structured JSON
+│   ├── models.py                        ← Pydantic schemas
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── test/
+│   ├── demo-page.html                   ← Page with planted PII
+│   └── demo-page-clean.html             ← Page with zero PII
+│
+├── scripts/
+│   ├── download-models.js               ← Fetch ONNX models
+│   ├── setup.sh                         ← Linux/Mac setup
+│   └── setup.ps1                        ← Windows setup
+│
+├── docs/
+│   └── demo-scenarios.md                ← 3 demo walkthroughs
+│
+├── .gitignore
+├── README.md
+└── LICENSE
+```
+
+---
+
+## 2.6 Demo Scenario (End-to-End)
+
+**Task**: "Help me fill out this signup form"
+
+```
+Step 1: User navigates to signup page (name, email, password, phone, profile photo)
+Step 2: User presses Ctrl+Shift+V → types "Fill this form with my details"
+Step 3: Extension captures screenshot + DOM
+Step 4: Tier 1 detects: password (type=password), email (type=email), phone (type=tel)
+Step 5: Tier 2 detects: face in profile photo area (BlazeFace)
+Step 6: Redaction engine:
+        • Blurs face in screenshot
+        • Blacks out email/password/phone field content
+        • DOM: email → [EMAIL_REDACTED], password → [PASSWORD_REDACTED]
+Step 7: Popup shows: "Redacted: 1 face, 1 email, 1 password, 1 phone | 287ms"
+Step 8: Sanitized context sent to Groq API (Qwen2.5-VL)
+Step 9: Server returns: { "actions": [{"type": "click", "selector": "#name"}],
+                          "explanation": "Let's start by clicking the Name field" }
+Step 10: Extension highlights #name field with glow, then clicks it
+Step 11: Loop: re-capture → re-redact → server says "type 'Recursive Minds' in name"
+Step 12: Extension types the text character by character
+Step 13: Continue until form is complete
+```
+
+---
+
+## 2.7 Build Order (Suggested Sprint Plan)
+
+| Phase | Components | Duration | Parallelizable |
+|---|---|---|---|
+| **Phase 1: Foundation** | Manifest, popup shell, service worker skeleton, content script skeleton | Day 1 morning | Client team |
+| **Phase 2: Capture** | screen-capture.js, dom-extractor.js, hardware-profiler.js | Day 1 afternoon | Client team |
+| **Phase 3: Tier 1 PII** | pii-types.js, dom-detector.js, regex-detector.js | Day 1 afternoon | Can parallel with Phase 2 |
+| **Phase 4: Server** | main.py, vlm_engine.py, action_generator.py, models.py | Day 1 | Server team (parallel) |
+| **Phase 5: Redaction** | visual-redactor.js, dom-redactor.js, manifest-generator.js | Day 2 morning | Client team |
+| **Phase 6: Tier 2 PII** | face-detector.js, ocr-detector.js + model loading | Day 2 morning | Can parallel with Phase 5 |
+| **Phase 7: Network** | context-packager.js, api-client.js + server CORS | Day 2 afternoon | Integration |
+| **Phase 8: Actions** | action-validator.js, action-executor.js | Day 2 afternoon | Client team |
+| **Phase 9: Integration** | Full pipeline test, multi-step flows | Day 3 morning | Full team |
+| **Phase 10: Polish** | Demo page, metrics UI, Tier 3, edge cases | Day 3 afternoon | Full team |
+
+---
+
+## 2.8 Verification Plan
+
+### Automated Tests
+- Unit tests for regex PII detection (test all 8+ patterns with true/false positives)
+- Unit tests for DOM detector (mock HTML forms with various input types)
+- Integration test: capture → detect → redact → verify no PII in output image
+- Server API tests with sample sanitized context payloads
+- Action validator tests with malformed/malicious payloads
+
+### Manual Verification
+- **Privacy test**: Load demo-page.html → capture → inspect redacted screenshot → confirm zero PII leakage
+- **False positive test**: Load demo-page-clean.html → verify nothing is incorrectly redacted
+- **Resource test**: Monitor Chrome Task Manager during inference (memory, CPU)
+- **Latency test**: Measure end-to-end time from prompt to action execution per stage
+- **Cross-browser test**: Load in Firefox with polyfill → verify core flow works
+- **Demo recording**: Full signup form assistance workflow recorded as video for judges
