@@ -114,6 +114,7 @@ export function detectRegex(textBlocks, sensitivity = 'balanced') {
           token: PII_TYPES[type]?.token || '[PII]',
           confidence: config.confidence,
           detector: 'regex',
+          value: matchedText, // Required by dom-redactor.js to redact the text payload
           reason: `Matched pattern: ${matchedText}`
         });
       }
