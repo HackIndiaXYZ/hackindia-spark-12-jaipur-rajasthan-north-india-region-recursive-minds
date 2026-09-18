@@ -1,8 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .models import AnalyzeRequest, AnalyzeResponse
-from .vlm_engine import analyze_context
-from .action_generator import generate_actions
+from dotenv import load_dotenv
+import os
+
+# Load environment variables before anything else
+load_dotenv()
+
+from models import AnalyzeRequest, AnalyzeResponse
+from vlm_engine import analyze_context
+from action_generator import generate_actions
 
 app = FastAPI(title="Veilex Backend Server")
 
@@ -48,4 +54,4 @@ async def analyze_endpoint(request: AnalyzeRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

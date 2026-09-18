@@ -75,7 +75,7 @@ async function ensureOffscreenDocument() {
 
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
-      reasons: ['CANVAS', 'WORKERS'],
+      reasons: ['DOM_PARSER', 'WORKERS'],
       justification: 'Run ML inference for PII detection and canvas redaction',
     });
     offscreenDocumentCreated = true;

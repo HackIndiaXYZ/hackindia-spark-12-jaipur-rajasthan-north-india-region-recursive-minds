@@ -59,7 +59,7 @@ async def analyze_context(prompt: str, screenshot_b64: str, dom_snapshot: dict) 
 
     try:
         response = await client.chat.completions.create(
-            model="llama-3.2-90b-vision-preview",
+            model="qwen/qwen3.8-27b",
             messages=[
                 {
                     "role": "system",
@@ -91,7 +91,7 @@ async def analyze_context(prompt: str, screenshot_b64: str, dom_snapshot: dict) 
         return {
             "raw_response": raw_output,
             "provider": "groq",
-            "model": "llama-3.2-90b-vision-preview"
+            "model": "qwen/qwen3.8-27b"
         }
         
     except Exception as e:
